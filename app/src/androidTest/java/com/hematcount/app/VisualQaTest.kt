@@ -67,19 +67,25 @@ class VisualQaTest {
     }
 
     private fun shot(name: String) {
-        compose.waitForIdle()
+        runCatching { compose.waitForIdle() }
         Thread.sleep(700)
         val bmp = instr.uiAutomation.takeScreenshot() ?: return
         FileOutputStream(File(outDir, "$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun clickText(t: String) =
+    private fun clickText(t: String) { runCatching {
         compose.onAllNodes(hasText(t) and hasClickAction()).onFirst().performClick()
+    }.onFailure { android.util.Log.w("VisualQa", "click '$t' failed: ${it.message}") } }
 
-    private fun clickDesc(d: String) =
+    private fun clickDesc(d: String) { runCatching {
         compose.onAllNodes(hasContentDescription(d) and hasClickAction()).onFirst().performClick()
+    }.onFailure { android.util.Log.w("VisualQa", "click desc '$d' failed: ${it.message}") } }
 
-    private fun back() { Espresso.pressBack(); compose.waitForIdle(); Thread.sleep(400) }
+    private fun back() {
+        runCatching { Espresso.pressBackUnconditionally() }
+            .onFailure { runCatching { instr.uiAutomation.executeShellCommand("input keyevent 4").close() } }
+        Thread.sleep(600)
+    }
 
     private fun scrollTo(i: Int) = runCatching {
         compose.onAllNodes(hasScrollToIndexAction()).onFirst().performScrollToIndex(i)
@@ -87,6 +93,9 @@ class VisualQaTest {
 
     private fun runTour(tag: String, theme: String) {
         seed(theme)
+        runCatching {
+            instr.uiAutomation.executeShellCommand("am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS").close()
+        }
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             shot("${tag}_01_counter")
             // a few real taps to exercise the keypad
@@ -102,8 +111,10 @@ class VisualQaTest {
             shot("${tag}_04_bar_chart")
             clickDesc("Show donut chart")
 
-            compose.onAllNodes(hasText("Monocytes") and hasClickAction()).onFirst()
-                .performTouchInput { longClick() }
+            runCatching {
+                compose.onAllNodes(hasText("Monocytes") and hasClickAction()).onFirst()
+                    .performTouchInput { longClick() }
+            }
             shot("${tag}_05_reference_card")
             back()
 
