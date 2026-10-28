@@ -41,12 +41,6 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/HematCount-v1.0.${{ github.run_number }}.apk
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: HematCount-APK
-          path: out/*.apk
-
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
