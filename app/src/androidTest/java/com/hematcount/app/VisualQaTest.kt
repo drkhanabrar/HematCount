@@ -63,6 +63,22 @@ class VisualQaTest {
             .putString("aiResult", SAMPLE_AI)
             .putString("aiProviderUsed", "OpenRouter · openrouter/auto")
             .putString("aiPdfMode", "INVESTIGATIONS")
+            .putString("mode", "BLOOD")
+            .putString("t_MARROW_counts", "BM_BLAST:4,BM_PROMYELOCYTE:12,BM_MYELOCYTE:60,BM_METAMYELOCYTE:70,BM_BAND:55,BM_SEGMENTED:45,BM_EOSINOPHIL:15,BM_BASOPHIL:1,BM_MONOCYTE:3,BM_PROERYTHROBLAST:3,BM_BASOPHILIC_NORMOBLAST:8,BM_POLYCHROMATIC_NORMOBLAST:95,BM_ORTHOCHROMATIC_NORMOBLAST:12,BM_LYMPHOCYTE:70,BM_PLASMA_CELL:6,BM_MACROPHAGE:2,BM_MEGAKARYOCYTE:9")
+            .putString("t_FLUID_CHAMBER_counts", "FL_NUCLEATED:46,FL_RBC:120")
+            .putString("t_FLUID_DIFF_counts", "FD_NEUTROPHIL:62,FD_LYMPHOCYTE:28,FD_MONO_MACRO:9,FD_EPENDYMAL:1")
+            .putString("t_RETIC_counts", "RT_RETIC:34,RT_RBC:966")
+            .putString("t_RBC_MORPH_counts", "RB_NORMAL:880,RB_SCHISTO:24,RB_SPHERO:30,RB_TARGET:40,RB_DACRO:12,RB_ECHINO:14")
+            .putString("t_PLATELET_counts", "PL_PLATELET:58,PL_FIELD:10,PL_CLUMP:2")
+            .putString("t_VIABILITY_counts", "VB_LIVE:182,VB_DEAD:18")
+            .putString("t_CUSTOM_counts", "CU_1:12,CU_2:7,CU_3:4")
+            .putString("inputs", org.json.JSONObject(mapOf(
+                "fl.preset" to "CSF", "fl.dilution" to "1", "fl.squares" to "L0,L1,L2,L3,L4,L5,L6,L7,L8",
+                "fl.appearance" to "TURBID", "fl.bloodWbc" to "9.5", "fl.bloodRbc" to "4.4",
+                "rt.rbc" to "3.2", "rt.hct" to "28",
+                "bm.site" to "Right posterior iliac crest", "bm.particles" to "PRESENT", "bm.cellularity" to "HYPER",
+                "bm.mega" to "ADEQUATE", "bm.iron" to "NORMAL",
+            ) as Map<*, *>).toString())
             .commit()
     }
 
@@ -153,12 +169,50 @@ class VisualQaTest {
                 scenario.onActivity { vm = ViewModelProvider(it)[CounterViewModel::class.java] }
                 val pdf = PdfReport.generate(ctx, ReportData.from(vm!!))
                 pdf.copyTo(File(outDir, "report.pdf"), overwrite = true)
-                renderPdf(pdf)
+                renderPdf(pdf, "pdf")
             }
+
+            // ---- every additional counter mode
+            val modes = listOf(
+                Triple("Bone marrow", "marrow", "Findings"), Triple("CSF · Fluids", "fluid", "Setup"),
+                Triple("Reticulocytes", "retic", "Setup"), Triple("RBC morphology", "rbc", "Guide"),
+                Triple("Platelets", "platelet", "Setup"), Triple("Viability", "viability", "Setup"),
+                Triple("Custom", "custom", "Edit keys"),
+            )
+            for ((chip, name, setup) in modes) {
+                clickText(chip)
+                shot("${tag}_m_${name}_1_counter")
+                if (name == "fluid") { clickText("Differential"); shot("${tag}_m_${name}_1b_differential"); clickText("Chamber count") }
+                if (name == "marrow") {
+                    clickText("Blasts")
+                    clickText("Undo")
+                    Thread.sleep(120)
+                    instr.uiAutomation.takeScreenshot()?.let { b ->
+                        FileOutputStream(File(outDir, "${tag}_m_marrow_1c_undo_flash.png")).use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    }
+                    Thread.sleep(900)
+                }
+                clickText(setup)
+                shot("${tag}_m_${name}_2_setup")
+                back()
+                clickText("Results")
+                shot("${tag}_m_${name}_3_results")
+                scrollTo(3); shot("${tag}_m_${name}_4_results_more")
+                clickDesc("Back to counter")
+                if (tag == "light") {
+                    var vm: CounterViewModel? = null
+                    scenario.onActivity { vm = ViewModelProvider(it)[CounterViewModel::class.java] }
+                    runCatching {
+                        val pdf = PdfReport.generate(ctx, ReportData.from(vm!!))
+                        renderPdf(pdf, "pdf_$name")
+                    }
+                }
+            }
+            clickText("Blood")
         }
     }
 
-    private fun renderPdf(file: File) {
+    private fun renderPdf(file: File, prefix: String) {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
             PdfRenderer(fd).use { r ->
                 for (i in 0 until r.pageCount) {
@@ -167,7 +221,7 @@ class VisualQaTest {
                         val bmp = Bitmap.createBitmap(page.width * scale, page.height * scale, Bitmap.Config.ARGB_8888)
                         bmp.eraseColor(Color.WHITE)
                         page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                        FileOutputStream(File(outDir, "pdf_page${i + 1}.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        FileOutputStream(File(outDir, "${prefix}_page${i + 1}.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                     }
                 }
             }
