@@ -32,7 +32,7 @@ jobs:
         if: failure()
         run: |
           # Surface compiler / Gradle errors as annotations so they are visible without downloading logs
-          grep -E "^e: |error:|What went wrong|> " build.log | head -60 | while IFS= read -r line; do
+          grep -E "^e: |^w: .*deprecated.*error|What went wrong|^> [A-Z]" build.log | grep -v "^> Task" | head -45 | while IFS= read -r line; do
             echo "::error::${line//%/%25}"
           done
 

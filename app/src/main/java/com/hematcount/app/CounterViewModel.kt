@@ -23,11 +23,6 @@ import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.viewModelScope
-import com.hematcount.app.ai.DEFAULT_AI_MODEL
-import com.hematcount.app.ai.OpenRouterClient
-import com.hematcount.app.export.ReportData
-import kotlinx.coroutines.launch
 import com.hematcount.app.model.Calculations
 import com.hematcount.app.model.CellType
 import com.hematcount.app.model.CountResults
@@ -83,14 +78,6 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     var address by mutableStateOf("")
     var reportedBy by mutableStateOf("")
     var countryCode by mutableStateOf("91")
-
-    // ---- AI analysis (OpenRouter) ----
-    var aiKey by mutableStateOf("")
-    var aiModel by mutableStateOf(DEFAULT_AI_MODEL)
-    var aiIncludeAgeSex by mutableStateOf(true)
-    var aiResult by mutableStateOf("")
-    var aiError by mutableStateOf<String?>(null)
-    var aiLoading by mutableStateOf(false); private set
 
     // ---- AI interpretation ----
     val aiProviders = mutableStateListOf<AiProvider>()
@@ -302,24 +289,6 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun toggleProvider(p: AiProvider) = upsertProvider(p.copy(enabled = !p.enabled))
 
-    fun runAiAnalysis() {
-        if (aiLoading) return
-        if (aiKey.isBlank()) { aiError = "Add your OpenRouter API key first."; return }
-        if (wbcCounted == 0) { aiError = "Count some leucocytes before requesting an analysis."; return }
-        val summary = OpenRouterClient.buildAnonymisedSummary(ReportData.from(this), aiIncludeAgeSex)
-        aiLoading = true; aiError = null
-        viewModelScope.launch {
-            try {
-                aiResult = OpenRouterClient.analyse(aiKey, aiModel, summary)
-                save()
-            } catch (e: Exception) {
-                aiError = e.message ?: "Could not reach OpenRouter. Check your internet connection."
-            } finally {
-                aiLoading = false
-            }
-        }
-    }
-
     // ---------------------------------------------------------------- counting
     val wbcCounted: Int get() = CellType.wbcTypes.sumOf { counts[it] ?: 0 }
     val nrbcCount: Int get() = counts[CellType.NRBC] ?: 0
@@ -381,7 +350,7 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
         locked = false; correctionMode = false; showTargetDialog = false
         sampleId = ""; patientName = ""; patientAge = ""; patientSex = ""
         referredBy = ""; ward = ""; remarks = ""; wbcText = ""; patientPhone = ""
-        aiResult = ""; aiError = null
+        aiResult = ""; aiProviderUsed = ""; aiAttempts.clear(); aiPdfMode = AiPdfMode.NONE
         save()
     }
 
@@ -418,8 +387,6 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
             putString("aiProviders", AiProvider.listToJson(aiProviders))
             putString("aiResult", aiResult); putString("aiProviderUsed", aiProviderUsed)
             putString("aiPdfMode", aiPdfMode.name)
-            putString("aiKey", aiKey); putString("aiModel", aiModel)
-            putBoolean("aiAgeSex", aiIncludeAgeSex); putString("aiResult", aiResult)
         }.apply()
     }
 
@@ -473,9 +440,17 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
             ?: "Department of Pathology · Haematology Laboratory"
         address = prefs.getString("address", null) ?: "Pune, Maharashtra, India"
         reportedBy = prefs.getString("reportedBy", "") ?: ""
-        aiKey = prefs.getString("aiKey", "") ?: ""
-        aiModel = prefs.getString("aiModel", null)?.ifBlank { null } ?: DEFAULT_AI_MODEL
-        aiIncludeAgeSex = prefs.getBoolean("aiAgeSex", true)
+        val saved = prefs.getString("aiProviders", null)
+        aiProviders.clear()
+        if (saved == null) aiProviders.add(AiProvider.PRESETS.first())
+        else aiProviders.addAll(AiProvider.listFromJson(saved))
         aiResult = prefs.getString("aiResult", "") ?: ""
+        aiProviderUsed = prefs.getString("aiProviderUsed", "") ?: ""
+        aiPdfMode = runCatching { AiPdfMode.valueOf(prefs.getString("aiPdfMode", "NONE")!!) }.getOrDefault(AiPdfMode.NONE)
+        currentRecordId = prefs.getString("currentRecordId", null)
+        backupTreeUri = prefs.getString("backupTreeUri", null)
+        lastBackupAt = prefs.getLong("lastBackupAt", 0L)
+        lastBackupError = prefs.getString("lastBackupError", null)
+        backupIncludeKeys = prefs.getBoolean("backupIncludeKeys", false)
     }
 }
