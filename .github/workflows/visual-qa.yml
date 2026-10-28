@@ -1,0 +1,74 @@
+name: Visual QA (screenshots)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: visual-qa
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [ pixel_6, pixel_c ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build test APKs
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest 2>&1 | tee build.log
+      - name: Report build errors
+        if: failure()
+        run: |
+          grep -E "^e: |What went wrong|^> [A-Z]" build.log | grep -v "^> Task" | head -45 | while IFS= read -r line; do echo "::error::${line//%/%25}"; done
+
+      - name: Run on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: ${{ matrix.profile }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./.github/scripts/run-qa.sh ${{ matrix.profile }}
+
+      - name: Publish screenshots to the qa branch
+        run: |
+          set -e
+          cd qa-out
+          git init -q
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git config user.name "hematcount-ci"; git config user.email "ci@users.noreply.github.com"
+          mv ${{ matrix.profile }} /tmp/shots
+          if git fetch -q origin qa; then git checkout -q -b qa FETCH_HEAD; else git checkout -q --orphan qa; fi
+          rm -rf ${{ matrix.profile }}; mv /tmp/shots ${{ matrix.profile }}
+          git add -A
+          git commit -qm "QA screenshots ${{ matrix.profile }} @ ${GITHUB_SHA::7}" || exit 0
+          for i in 1 2 3 4; do
+            git push -q origin HEAD:qa && exit 0
+            sleep 5; git fetch -q origin qa; git rebase -q FETCH_HEAD || { git rebase --abort; git reset -q --soft FETCH_HEAD; git commit -qm "QA ${{ matrix.profile }}"; }
+          done
+          exit 1

@@ -73,7 +73,7 @@ import com.hematcount.app.ui.theme.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: CounterViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: CounterViewModel, onBack: () -> Unit, onOpenAbout: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     var editing by remember { mutableStateOf<AiProvider?>(null) }
     var deleting by remember { mutableStateOf<AiProvider?>(null) }
@@ -172,7 +172,9 @@ fun SettingsScreen(vm: CounterViewModel, onBack: () -> Unit) {
                 }
                 // ---------------- about
                 item {
-                    SectionCard("About HematCount") {
+                    SectionCard("About HematCount", action = {
+                        TextButton(onClick = onOpenAbout) { Text("View") }
+                    }) {
                         Text("Version ${BuildConfigInfo.versionName(androidx.compose.ui.platform.LocalContext.current)}",
                             style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(6.dp))

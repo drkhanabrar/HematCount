@@ -22,13 +22,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hematcount.app.ui.AboutScreen
 import com.hematcount.app.ui.CounterScreen
 import com.hematcount.app.ui.HistoryScreen
 import com.hematcount.app.ui.ResultsScreen
 import com.hematcount.app.ui.SettingsScreen
 import com.hematcount.app.ui.theme.HematCountTheme
 
-enum class Screen { COUNTER, RESULTS, HISTORY, SETTINGS }
+enum class Screen { COUNTER, RESULTS, HISTORY, SETTINGS, ABOUT }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,8 +50,13 @@ class MainActivity : ComponentActivity() {
 fun HematCountApp(vm: CounterViewModel) {
     var screen by rememberSaveable { mutableStateOf(Screen.COUNTER) }
     var settingsReturn by rememberSaveable { mutableStateOf(Screen.COUNTER) }
+    var aboutReturn by rememberSaveable { mutableStateOf(Screen.COUNTER) }
     BackHandler(enabled = screen != Screen.COUNTER) {
-        screen = if (screen == Screen.SETTINGS) settingsReturn else Screen.COUNTER
+        screen = when (screen) {
+            Screen.SETTINGS -> settingsReturn
+            Screen.ABOUT -> aboutReturn
+            else -> Screen.COUNTER
+        }
     }
 
     AnimatedContent(
@@ -68,6 +74,7 @@ fun HematCountApp(vm: CounterViewModel) {
                 onOpenResults = { screen = Screen.RESULTS },
                 onOpenSettings = { settingsReturn = Screen.COUNTER; screen = Screen.SETTINGS },
                 onOpenHistory = { screen = Screen.HISTORY },
+                onOpenAbout = { aboutReturn = Screen.COUNTER; screen = Screen.ABOUT },
             )
             Screen.RESULTS -> ResultsScreen(
                 vm = vm,
@@ -79,7 +86,12 @@ fun HematCountApp(vm: CounterViewModel) {
                 onBack = { screen = Screen.COUNTER },
                 onOpened = { vm.resultsTab = 0; screen = Screen.RESULTS },
             )
-            Screen.SETTINGS -> SettingsScreen(vm = vm, onBack = { screen = settingsReturn })
+            Screen.SETTINGS -> SettingsScreen(
+                vm = vm,
+                onBack = { screen = settingsReturn },
+                onOpenAbout = { aboutReturn = Screen.SETTINGS; screen = Screen.ABOUT },
+            )
+            Screen.ABOUT -> AboutScreen(onBack = { screen = aboutReturn })
         }
     }
 }

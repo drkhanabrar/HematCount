@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
@@ -131,6 +132,7 @@ fun CounterScreen(
     onOpenResults: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     val context = LocalContext.current
     val feedback = remember { Feedback(context.applicationContext) }
@@ -209,6 +211,8 @@ fun CounterScreen(
                                 onClick = { menu = false; showPatient = true })
                             DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Filled.Settings, null) },
                                 onClick = { menu = false; onOpenSettings() })
+                            DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(Icons.Filled.Info, null) },
+                                onClick = { menu = false; onOpenAbout() })
                         }
                     }
                 },

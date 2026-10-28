@@ -15,6 +15,7 @@ android {
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
         vectorDrawables { useSupportLibrary = true }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -74,4 +75,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core-ktx:1.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }
