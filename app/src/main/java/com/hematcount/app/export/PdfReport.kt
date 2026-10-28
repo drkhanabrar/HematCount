@@ -77,10 +77,9 @@ object PdfReport {
             morphology(s)
         } else {
             setupPanel(s, m)
-            genericTable(s, m.title.substringBefore(" —").let { if (m.mode == com.hematcount.app.model.CounterMode.FLUID) "Chamber count" else "Cell count" },
-                m.rows, m.extraHeader)
-            if (m.rows2.isNotEmpty()) genericTable(s, m.rows2Title ?: "Differential", m.rows2, m.rows2ExtraHeader)
             genericIndices(s, m)
+            genericTable(s, if (m.mode == com.hematcount.app.model.CounterMode.FLUID) "Chamber count" else "Cell count", m.rows, m.extraHeader)
+            if (m.rows2.isNotEmpty()) genericTable(s, m.rows2Title ?: "Differential", m.rows2, m.rows2ExtraHeader)
             alerts(s)
         }
         remarks(s)
@@ -344,7 +343,13 @@ object PdfReport {
         ensure(s, 26f + 22f + rowH * minOf(rows.size, 6))
         sectionTitle(s, title)
         val c = s.canvas
-        val x0 = M; val xCount = 232f; val xPct = 282f; val xExtra = 334f; val xNormal = 430f; val xFlag = 505f; val x7 = W - M
+        val hasExtra = extraHeader.isNotBlank()
+        val x0 = M; val x7 = W - M
+        val xCount = if (hasExtra) 232f else 262f
+        val xPct = xCount + 50f
+        val xExtra = xPct + 52f
+        val xNormal = if (hasExtra) 430f else xExtra
+        val xFlag = 505f
         val hTop = s.y; val hH = 22f
         c.drawRoundRect(RectF(x0, hTop, x7, hTop + hH), 4f, 4f, fill(NAVY))
         val hp = text(7f, Color.WHITE, BOLD)
@@ -352,7 +357,7 @@ object PdfReport {
         c.drawText("CELL TYPE", x0 + 10f, hTop + 14f, hp)
         c.drawText("COUNT", (xCount + xPct) / 2, hTop + 14f, hpc)
         c.drawText("%", (xPct + xExtra) / 2, hTop + 14f, hpc)
-        c.drawText(extraHeader.uppercase().ifBlank { "—" }, (xExtra + xNormal) / 2, hTop + 14f, hpc)
+        if (hasExtra) c.drawText(extraHeader.uppercase(), (xExtra + xNormal) / 2, hTop + 14f, hpc)
         c.drawText("NORMAL RANGE", (xNormal + xFlag) / 2, hTop + 14f, hpc)
         c.drawText("FLAG", (xFlag + x7) / 2, hTop + 14f, hpc)
         s.y = hTop + hH
@@ -371,7 +376,7 @@ object PdfReport {
             val vp = text(8.6f, INK, if (flagged) BOLD else REGULAR, Paint.Align.CENTER)
             cc.drawText(r.count.toString(), (xCount + xPct) / 2, base, vp)
             cc.drawText(r.percent?.let { com.hematcount.app.model.Calculations.fmt1(it) } ?: "—", (xPct + xExtra) / 2, base, vp)
-            cc.drawText(ellipsize(r.extra ?: "—", text(8.2f), xNormal - xExtra - 4f), (xExtra + xNormal) / 2, base,
+            if (hasExtra) cc.drawText(ellipsize(r.extra ?: "—", text(8.2f), xNormal - xExtra - 4f), (xExtra + xNormal) / 2, base,
                 text(8.2f, INK, if (flagged) BOLD else REGULAR, Paint.Align.CENTER))
             cc.drawText(ellipsize(r.normal.ifBlank { "—" }, text(7.6f), xFlag - xNormal - 4f), (xNormal + xFlag) / 2, base,
                 text(7.6f, MUTED, REGULAR, Paint.Align.CENTER))

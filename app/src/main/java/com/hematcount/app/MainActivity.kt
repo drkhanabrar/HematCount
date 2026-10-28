@@ -80,7 +80,7 @@ fun HematCountApp(vm: CounterViewModel) {
         when (s) {
             Screen.COUNTER -> CounterScreen(
                 vm = vm,
-                onOpenResults = { screen = Screen.RESULTS },
+                onOpenResults = { vm.resultsTab = 0; screen = Screen.RESULTS },
                 onOpenSettings = { settingsReturn = Screen.COUNTER; screen = Screen.SETTINGS },
                 onOpenHistory = { screen = Screen.HISTORY },
                 onOpenAbout = { aboutReturn = Screen.COUNTER; screen = Screen.ABOUT },

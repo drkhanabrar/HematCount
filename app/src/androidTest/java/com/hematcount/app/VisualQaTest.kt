@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.ViewModelProvider
@@ -90,7 +91,9 @@ class VisualQaTest {
     }
 
     private fun clickText(t: String) { runCatching {
-        compose.onAllNodes(hasText(t) and hasClickAction()).onFirst().performClick()
+        val n = compose.onAllNodes(hasText(t) and hasClickAction()).onFirst()
+        runCatching { n.performScrollTo() }
+        n.performClick()
     }.onFailure { android.util.Log.w("VisualQa", "click '$t' failed: ${it.message}") } }
 
     private fun clickDesc(d: String) { runCatching {
@@ -186,7 +189,7 @@ class VisualQaTest {
                 if (name == "marrow") {
                     clickText("Blasts")
                     clickText("Undo")
-                    Thread.sleep(120)
+                    Thread.sleep(330)
                     instr.uiAutomation.takeScreenshot()?.let { b ->
                         FileOutputStream(File(outDir, "${tag}_m_marrow_1c_undo_flash.png")).use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
                     }

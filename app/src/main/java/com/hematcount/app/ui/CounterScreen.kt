@@ -256,8 +256,18 @@ fun CounterScreen(
             val keypad: @Composable (Modifier) -> Unit = { m ->
                 Column(m) {
                     val cols = keypadColumns(items.size, landscape || tablet)
+                    val rep = vm.modeReport()
+                    val subOverride: (CountItem) -> String? = { item ->
+                        when {
+                            mode == CounterMode.FLUID && (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential) ->
+                                rep?.rows?.firstOrNull { it.name == item.displayName }?.extra
+                            mode == CounterMode.PLATELET && item.countsInTotal ->
+                                rep?.rows?.firstOrNull()?.extra ?: "per field"
+                            else -> null
+                        }
+                    }
                     CountKeypad(
-                        items = items, columns = cols, countOf = { vm.countOf(it) }, total = vm.currentTotal,
+                        items = items, columns = cols, countOf = { vm.countOf(it) }, total = vm.currentTotal, subOverride = subOverride,
                         nrbcStyle = mode == CounterMode.BLOOD, correction = vm.correctionMode,
                         locked = vm.currentLocked && !vm.correctionMode, large = tablet,
                         flashId = vm.flashId, flashTick = vm.flashTick,
@@ -277,7 +287,12 @@ fun CounterScreen(
                     )
                 }
             }
-            val summaryWeight = when (mode) { CounterMode.BLOOD -> 0.35f; CounterMode.FLUID -> 0.42f; else -> if (items.size > 12) 0.3f else 0.35f }
+            val summaryWeight = when (mode) {
+                CounterMode.BLOOD -> 0.35f
+                CounterMode.FLUID -> if (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential) 0.52f else 0.42f
+                CounterMode.MARROW -> 0.34f
+                else -> if (items.size <= 4) 0.42f else 0.35f
+            }
 
             if (landscape) {
                 Row(Modifier.fillMaxSize().padding(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(gutter)) {
@@ -429,8 +444,14 @@ private fun KeyCap(t: String) {
 @Composable
 private fun ModeChips(current: CounterMode, onSelect: (CounterMode) -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    val scroll = rememberScrollState()
+    // keep the selected mode visible
+    LaunchedEffect(current) {
+        val frac = current.ordinal.toFloat() / (CounterMode.entries.size - 1).coerceAtLeast(1)
+        scroll.animateScrollTo((scroll.maxValue * frac).toInt())
+    }
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 6.dp),
+        Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 12.dp).padding(bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         CounterMode.entries.forEach { m ->
@@ -590,7 +611,9 @@ private fun SummaryPanel(
                     FluidChamberPanel(vm)
                 } else if (donutMode) BoxWithConstraints(Modifier.fillMaxSize()) {
                     val donut = minOf(maxHeight, maxWidth * 0.46f, 260.dp)
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    if (maxHeight < 84.dp) {
+                        CompositionStrip(items, { vm.countOf(it) }, counted)
+                    } else Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                         DonutChart(items, { vm.countOf(it) }, counted, Modifier.size(donut))
                         Spacer(Modifier.width(14.dp))
                         Legend(items, { vm.countOf(it) }, counted, mode == CounterMode.BLOOD, Modifier.weight(1f).fillMaxHeight())
@@ -731,6 +754,32 @@ private fun DonutChart(items: List<CountItem>, countOf: (CountItem) -> Int, tota
     }
 }
 
+/** One stacked bar plus the leading cell types — used when the panel is too short for a donut. */
+@Composable
+private fun CompositionStrip(items: List<CountItem>, countOf: (CountItem) -> Int, total: Int) {
+    val scheme = MaterialTheme.colorScheme
+    val counted = items.filter { it.countsInTotal && countOf(it) > 0 }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+        Row(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape).background(scheme.surfaceContainerHighest)) {
+            if (total > 0) counted.forEach { item ->
+                Box(Modifier.weight(countOf(item).toFloat().coerceAtLeast(0.0001f)).fillMaxHeight().background(item.uiAccent()))
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (counted.isEmpty()) Text("Tap a key below to start counting.", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            counted.sortedByDescending { countOf(it) }.forEach { item ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(RoundedCornerShape(2.dp)).background(item.uiAccent()))
+                    Spacer(Modifier.width(4.dp))
+                    Text("${item.displayName} ${fmt1(countOf(item) * 100.0 / total)}%", style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurface, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun Legend(items: List<CountItem>, countOf: (CountItem) -> Int, total: Int, bloodStyle: Boolean, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
@@ -788,6 +837,7 @@ fun CountKeypad(
     columns: Int,
     countOf: (CountItem) -> Int,
     total: Int,
+    subOverride: (CountItem) -> String? = { null },
     nrbcStyle: Boolean,
     correction: Boolean,
     locked: Boolean,
@@ -810,7 +860,7 @@ fun CountKeypad(
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
                 row.forEach { item ->
                     CountKey(
-                        item = item, count = countOf(item), total = total, nrbcStyle = nrbcStyle,
+                        item = item, count = countOf(item), total = total, subOverride = subOverride(item), nrbcStyle = nrbcStyle,
                         correction = correction, locked = locked, large = large,
                         flash = flashId == item.id, flashTick = flashTick,
                         onTap = { onTap(item) }, onLongPress = { onLongPress(item) },
@@ -829,6 +879,7 @@ private fun RowScope.CountKey(
     item: CountItem,
     count: Int,
     total: Int,
+    subOverride: String?,
     nrbcStyle: Boolean,
     correction: Boolean,
     locked: Boolean,
@@ -896,6 +947,7 @@ private fun RowScope.CountKey(
                         ) { n -> Text(n.toString(), style = CounterNumberStyle.copy(fontSize = countSize.sp), color = content, maxLines = 1) }
                         val sub = when {
                             correction -> "tap −1"
+                            subOverride != null -> subOverride
                             excluded && nrbcStyle -> if (total > 0) "${fmt1(count * 100.0 / total)}/100" else "0/100"
                             excluded -> "separate"
                             else -> if (total > 0) "${fmt1(count * 100.0 / total)}%" else "0.0%"
