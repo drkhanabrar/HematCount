@@ -318,7 +318,7 @@ object PdfReport {
     private fun setupPanel(s: PageState, m: com.hematcount.app.model.ModeReport) {
         val items = m.setup.filter { it.first != "Specimen" }
         if (items.isEmpty()) return
-        val cols = 2
+        val cols = if (items.any { it.second.length > 34 }) 1 else 2
         val rowH = 20f
         val rows = (items.size + cols - 1) / cols
         val h = rows * rowH + 10f
@@ -333,7 +333,7 @@ object PdfReport {
             val x = M + 12f + (i % cols) * colW
             val y = top + 18f + (i / cols) * rowH
             c.drawText(k, x, y, text(8f, MUTED, MEDIUM))
-            c.drawText(ellipsize(v, text(8.6f, face = BOLD), colW - 120f), x + 105f, y, text(8.6f, INK, BOLD))
+            c.drawText(ellipsize(v, text(8.6f, face = BOLD), colW - 130f), x + 115f, y, text(8.6f, INK, BOLD))
         }
         s.y = top + h + 18f
     }
