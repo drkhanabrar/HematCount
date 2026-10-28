@@ -167,7 +167,7 @@ object PdfReport {
         val c = s.canvas
         val top = 790f
         c.drawLine(M, top, W - M, top, stroke(LINE))
-        val p = text(6.8f, MUTED)
+        val p = text(7f, MUTED)
         val lines = wrap(
             "Reference intervals (adults): $REFERENCE_SOURCES. H = above and L = below the reference interval; " +
                 "\"Present\" = cell type not normally seen in peripheral blood. Absolute counts in ×10³/µL (equivalent to ×10⁹/L).",
@@ -235,7 +235,7 @@ object PdfReport {
         sectionTitle(s, "Differential leucocyte count")
         val c = s.canvas
         // column boundaries
-        val x0 = M; val xCount = 214f; val xPct = 262f; val xAbs = 322f; val xRefPct = 400f; val xRefAbs = 474f; val xFlag = 546f
+        val x0 = M; val xCount = 190f; val xPct = 236f; val xAbs = 292f; val xRefPct = 362f; val xRefAbs = 432f; val xFlag = 504f
         val x7 = W - M
         val rowH = 16f
 
@@ -455,7 +455,7 @@ object PdfReport {
         c.drawRoundRect(rect, 6f, 6f, fill(PANEL)); c.drawRoundRect(rect, 6f, 6f, stroke(LINE))
         var y = s.y + 16f
         lines.forEach { c.drawText(it, M + 12f, y, p); y += 12.5f }
-        s.y += h + 6f
+        s.y += h + 22f
     }
 
     /** AI-assisted interpretation (optional). Markdown headings/bullets are rendered simply. */

@@ -173,7 +173,7 @@ fun CounterScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 84.dp)) },
         topBar = {
             TopAppBar(
                 title = {
@@ -252,7 +252,7 @@ fun CounterScreen(
                         },
                         onToggleCorrection = {
                             vm.correctionMode = !vm.correctionMode
-                            message(if (vm.correctionMode) "Correction mode on — tap a cell to subtract 1" else "Correction mode off")
+                            snackbar.currentSnackbarData?.dismiss()
                         },
                         onMorphology = { showMorphology = true },
                         onResults = onOpenResults,
@@ -459,9 +459,10 @@ private fun SummaryPanel(
             Spacer(Modifier.height(8.dp))
             // Chart area
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (donutMode) {
+                if (donutMode) BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val donut = minOf(maxHeight, maxWidth * 0.46f, 260.dp)
                     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        DonutChart(vm, Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true))
+                        DonutChart(vm, Modifier.size(donut))
                         Spacer(Modifier.width(14.dp))
                         Legend(vm, Modifier.weight(1f).fillMaxHeight())
                     }
@@ -694,7 +695,7 @@ private fun RowScope.CellKey(
                         ) { n ->
                             Text(n.toString(), style = CounterNumberStyle.copy(fontSize = countSize.sp), color = content, maxLines = 1)
                         }
-                        val sub = if (isNrbc) {
+                        val sub = if (correction) "tap −1" else if (isNrbc) {
                             if (total > 0) "${fmt1(count * 100.0 / total)}/100" else "0/100"
                         } else {
                             if (total > 0) "${fmt1(count * 100.0 / total)}%" else "0.0%"
@@ -703,25 +704,22 @@ private fun RowScope.CellKey(
                             color = subContent, maxLines = 1)
                     }
                 }
+                val baseSize = if (compact) 12.5f else if (large) 16f else 14f
+                val longest = cell.displayName.split(" ").maxOf { it.length }
+                // ~0.58 em average glyph width for semibold sans; keep the longest word on one line
+                val fitSize = ((w.value - 22f) / (longest * 0.58f)).coerceAtMost(baseSize).coerceAtLeast(10f)
                 Text(
                     cell.displayName,
-                    style = if (compact) MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                    else MaterialTheme.typography.labelLarge.copy(fontSize = if (large) 16.sp else 14.sp),
-                    color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = if (compact) 14.sp else 17.sp,
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = fitSize.sp, fontWeight = FontWeight.SemiBold),
+                    color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fitSize * 1.2f).sp,
+                    softWrap = true,
                 )
                 if (h > 118.dp) {
                     Text(cell.group, style = MaterialTheme.typography.bodySmall, color = subContent,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (correction) {
-                Surface(
-                    color = scheme.error, contentColor = scheme.onError, shape = CircleShape,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
-                ) {
-                    Text("−1", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
-                }
-            }
+
         }
     }
 }
