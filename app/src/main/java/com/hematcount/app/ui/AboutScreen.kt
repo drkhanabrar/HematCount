@@ -108,13 +108,16 @@ fun AboutScreen(onBack: () -> Unit) {
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 Text("HematCount", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                                Text("Version ${BuildConfigInfo.versionName(context)}",
-                                    style = MaterialTheme.typography.labelLarge, color = Color(0xE6FFFFFF))
+                                Spacer(Modifier.height(4.dp))
+                                Text("Precision in Every Cell",
+                                    style = MaterialTheme.typography.titleMedium, color = Color(0xFF9FF0E1), textAlign = TextAlign.Center)
                                 Spacer(Modifier.height(10.dp))
                                 Text(
                                     "Haematology Differential Cell Counter",
                                     style = MaterialTheme.typography.bodyMedium, color = Color(0xF2FFFFFF), textAlign = TextAlign.Center,
                                 )
+                                Text("Version ${BuildConfigInfo.versionName(context)}",
+                                    style = MaterialTheme.typography.labelMedium, color = Color(0xCCFFFFFF))
                             }
                         }
                     }
@@ -131,7 +134,8 @@ fun AboutScreen(onBack: () -> Unit) {
                                 color = scheme.onSecondaryContainer.copy(alpha = 0.8f))
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "Presented as a complimentary offering to medical professionals and students by Dr. Imran Khan.",
+                                "Thoughtfully conceived and presented by Dr. Imran Khan as a complimentary resource " +
+                                    "for medical professionals and students.",
                                 style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center,
                             )
                         }
@@ -169,25 +173,29 @@ fun AboutScreen(onBack: () -> Unit) {
 
                 // ---------------- R&D
                 item {
-                    SectionCard("Our Products") {
+                    SectionCard("Explore Our Portfolio") {
                         Row(verticalAlignment = Alignment.Top) {
                             IconBadge(Icons.Filled.Science)
                             Spacer(Modifier.width(12.dp))
                             Text(
-                                "For other products developed by our team, please visit the Research & Development section at carehospital.in.",
+                                "Discover our complete range of clinical and healthcare solutions in the " +
+                                    "Research & Development section at carehospital.in.",
                                 style = MaterialTheme.typography.bodyMedium, color = scheme.onSurface,
                             )
                         }
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { openUrl(context, RND_PAGE) }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Outlined.Biotech, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                            Text("Research & Development")
+                            Text("Explore Research & Development")
                         }
                     }
                 }
 
                 item {
                     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Crafted for the laboratory. Built for learning.",
+                            style = MaterialTheme.typography.titleSmall, color = scheme.primary, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(4.dp))
                         Text("© 2026 HematCount. All rights reserved.", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                     }
                 }
