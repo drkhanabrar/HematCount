@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- cell cytoplasm -->
+    <path android:fillColor="#FFF4F7FB"
+        android:pathData="M54,54m-23,0a23,23 0,1 1,46 0a23,23 0,1 1,-46 0" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFBFE7F0" android:strokeWidth="1.6"
+        android:pathData="M54,54m-23,0a23,23 0,1 1,46 0a23,23 0,1 1,-46 0" />
+    <!-- chromatin bridges -->
+    <path android:fillColor="#00000000" android:strokeColor="#FF4C2A7A" android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M45,47 L54,58 M54,58 L63,47" />
+    <!-- nuclear lobes -->
+    <path android:fillColor="#FF5B2E91"
+        android:pathData="M45,47m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+    <path android:fillColor="#FF5B2E91"
+        android:pathData="M54,60m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+    <path android:fillColor="#FF5B2E91"
+        android:pathData="M63,47m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+    <!-- granules -->
+    <path android:fillColor="#FFE7A6C4"
+        android:pathData="M40,60m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0 M68,61m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0 M54,39m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0 M62,68m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0 M46,68m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0" />
+    <!-- count badge -->
+    <path android:fillColor="#FF22C3A6"
+        android:pathData="M74,34m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M74,30 L74,38 M70,34 L78,34" />
+</vector>
