@@ -211,6 +211,7 @@ fun PatientDialog(vm: CounterViewModel, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(vm.patientName) }
     var age by remember { mutableStateOf(vm.patientAge) }
     var sex by remember { mutableStateOf(vm.patientSex) }
+    var phone by remember { mutableStateOf(vm.patientPhone) }
     var referred by remember { mutableStateOf(vm.referredBy) }
     var ward by remember { mutableStateOf(vm.ward) }
     val scheme = MaterialTheme.colorScheme
@@ -236,6 +237,11 @@ fun PatientDialog(vm: CounterViewModel, onDismiss: () -> Unit) {
                         ) { Text(s) }
                     }
                 }
+                Field("Patient mobile (WhatsApp)", phone, KeyboardCapitalization.None, KeyboardType.Phone) {
+                    phone = it.filter { c -> c.isDigit() || c == '+' || c == ' ' }.take(18)
+                }
+                Text("Without a + prefix, country code +${vm.countryCode} is added (change in Settings).",
+                    style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 Field("Referred by", referred, KeyboardCapitalization.Words) { referred = it }
                 Field("Ward / OPD / Bed", ward, KeyboardCapitalization.Words) { ward = it }
             }
@@ -243,7 +249,7 @@ fun PatientDialog(vm: CounterViewModel, onDismiss: () -> Unit) {
         confirmButton = {
             Button(onClick = {
                 vm.sampleId = sampleId.trim(); vm.patientName = name.trim(); vm.patientAge = age.trim()
-                vm.patientSex = sex; vm.referredBy = referred.trim(); vm.ward = ward.trim()
+                vm.patientSex = sex; vm.patientPhone = phone.trim(); vm.referredBy = referred.trim(); vm.ward = ward.trim()
                 vm.save(); onDismiss()
             }) { Text("Save") }
         },

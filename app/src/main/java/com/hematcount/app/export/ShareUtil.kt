@@ -45,6 +45,47 @@ object ShareUtil {
         return false
     }
 
+    /** Normalises a phone number to international digits, e.g. "098765 43210" + "91" -> "919876543210". */
+    fun normalisePhone(raw: String, defaultCountryCode: String): String? {
+        val trimmed = raw.trim()
+        var digits = trimmed.filter { it.isDigit() }
+        if (digits.isEmpty()) return null
+        val cc = defaultCountryCode.filter { it.isDigit() }.ifBlank { "91" }
+        digits = when {
+            trimmed.startsWith("+") -> digits
+            digits.startsWith("00") -> digits.drop(2)
+            digits.length == 11 && digits.startsWith("0") -> cc + digits.drop(1)
+            digits.length <= 10 -> cc + digits
+            else -> digits
+        }
+        return digits.takeIf { it.length in 8..15 }
+    }
+
+    /**
+     * Opens WhatsApp directly in the chat of [phoneDigits] with the PDF attached.
+     * The user confirms with one tap on Send (WhatsApp does not allow silent sending).
+     * @return true if WhatsApp handled it.
+     */
+    fun sendPdfToWhatsAppNumber(context: Context, file: File, phoneDigits: String, caption: String): Boolean {
+        val uri = uriFor(context, file)
+        for (pkg in WHATSAPP_PACKAGES) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/pdf"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, caption)
+                putExtra("jid", "$phoneDigits@s.whatsapp.net")
+                setPackage(pkg)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.startActivity(intent); return true
+            } catch (_: Exception) { }
+        }
+        return false
+    }
+
     fun shareTextToWhatsApp(context: Context, text: String): Boolean {
         for (pkg in WHATSAPP_PACKAGES) {
             val intent = Intent(Intent.ACTION_SEND).apply {

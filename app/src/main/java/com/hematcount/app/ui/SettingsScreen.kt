@@ -138,6 +138,9 @@ fun SettingsScreen(vm: CounterViewModel, onBack: () -> Unit) {
                             Field("Department / laboratory", vm.department, KeyboardCapitalization.Words) { vm.department = it; vm.save() }
                             Field("Address / contact line", vm.address, KeyboardCapitalization.Words) { vm.address = it; vm.save() }
                             Field("Default \"Reported by\"", vm.reportedBy, KeyboardCapitalization.Words) { vm.reportedBy = it; vm.save() }
+                            Field("Default WhatsApp country code (e.g. 91 for India)", vm.countryCode, KeyboardCapitalization.None, KeyboardType.Number) {
+                                vm.countryCode = it.filter { c -> c.isDigit() }.take(4); vm.save()
+                            }
                         }
                     }
                 }

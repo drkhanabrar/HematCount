@@ -23,11 +23,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hematcount.app.ui.CounterScreen
+import com.hematcount.app.ui.HistoryScreen
 import com.hematcount.app.ui.ResultsScreen
 import com.hematcount.app.ui.SettingsScreen
 import com.hematcount.app.ui.theme.HematCountTheme
 
-enum class Screen { COUNTER, RESULTS, SETTINGS }
+enum class Screen { COUNTER, RESULTS, HISTORY, SETTINGS }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,11 +67,17 @@ fun HematCountApp(vm: CounterViewModel) {
                 vm = vm,
                 onOpenResults = { screen = Screen.RESULTS },
                 onOpenSettings = { settingsReturn = Screen.COUNTER; screen = Screen.SETTINGS },
+                onOpenHistory = { screen = Screen.HISTORY },
             )
             Screen.RESULTS -> ResultsScreen(
                 vm = vm,
                 onBack = { screen = Screen.COUNTER },
                 onOpenAiSettings = { settingsReturn = Screen.RESULTS; screen = Screen.SETTINGS },
+            )
+            Screen.HISTORY -> HistoryScreen(
+                vm = vm,
+                onBack = { screen = Screen.COUNTER },
+                onOpened = { vm.resultsTab = 0; screen = Screen.RESULTS },
             )
             Screen.SETTINGS -> SettingsScreen(vm = vm, onBack = { screen = settingsReturn })
         }

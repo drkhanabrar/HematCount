@@ -49,7 +49,9 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Bloodtype
@@ -124,7 +126,12 @@ fun CellType.uiAccent(): Color =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CounterScreen(vm: CounterViewModel, onOpenResults: () -> Unit, onOpenSettings: () -> Unit) {
+fun CounterScreen(
+    vm: CounterViewModel,
+    onOpenResults: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
     val context = LocalContext.current
     val feedback = remember { Feedback(context.applicationContext) }
     val snackbar = remember { SnackbarHostState() }
@@ -191,8 +198,18 @@ fun CounterScreen(vm: CounterViewModel, onOpenResults: () -> Unit, onOpenSetting
                     IconButton(onClick = { showNewSample = true }) {
                         Icon(Icons.Filled.RestartAlt, contentDescription = "New sample")
                     }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    Box {
+                        var menu by remember { mutableStateOf(false) }
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                            DropdownMenuItem(text = { Text("History & backup") }, leadingIcon = { Icon(Icons.Filled.History, null) },
+                                onClick = { menu = false; onOpenHistory() })
+                            DropdownMenuItem(text = { Text("Sample details") }, leadingIcon = { Icon(Icons.Filled.Badge, null) },
+                                onClick = { menu = false; showPatient = true })
+                            DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Filled.Settings, null) },
+                                onClick = { menu = false; onOpenSettings() })
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

@@ -163,6 +163,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
     var showPatient by remember { mutableStateOf(false) }
     var showMorph by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var showOtherNumber by remember { mutableStateOf(false) }
     val results = vm.results()
     val data = ReportData.from(vm)
 
@@ -171,6 +172,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
     fun withPdf(action: (File, ReportData) -> Unit) {
         if (busy) return
         busy = true
+        vm.saveToHistory()
         scope.launch {
             val d = ReportData.from(vm)
             val file = runCatching { withContext(Dispatchers.IO) { PdfReport.generate(context, d) } }
@@ -229,6 +231,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                 InfoGrid(listOf(
                     "Sample ID" to vm.sampleId, "Patient" to vm.patientName, "Age / Sex" to ageSex,
                     "Referred by" to vm.referredBy, "Ward / OPD" to vm.ward,
+                    "WhatsApp" to vm.patientPhone,
                     "Count target" to if (vm.target == 0) "Continuous" else "${vm.target}",
                 ))
             }
@@ -360,7 +363,44 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(10.dp)); Text("Preparing PDF…", style = MaterialTheme.typography.bodyMedium)
                 }
+                val patientDigits = ShareUtil.normalisePhone(vm.patientPhone, vm.countryCode)
+                fun caption(d: ReportData) = buildString {
+                    append("Dear ${d.patientName.ifBlank { "Patient" }}, please find your haematology report")
+                    if (d.sampleId.isNotBlank()) append(" (Sample ${d.sampleId})")
+                    append(" attached.")
+                    if (d.institution.isNotBlank()) append("\n— ${d.institution}")
+                }
+                fun sendTo(digits: String) = withPdf { f, d ->
+                    if (!ShareUtil.sendPdfToWhatsAppNumber(context, f, digits, caption(d))) {
+                        toast("WhatsApp is not installed")
+                    }
+                }
                 Button(
+                    onClick = { patientDigits?.let { sendTo(it) } },
+                    enabled = patientDigits != null && !busy,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF128C7E), contentColor = Color.White,
+                        disabledContainerColor = scheme.surfaceContainerHighest, disabledContentColor = scheme.onSurfaceVariant),
+                ) {
+                    Icon(Icons.Outlined.Forum, null); Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Send to patient on WhatsApp")
+                        Text(patientDigits?.let { "+$it" } ?: "Add the patient's mobile in sample details",
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilledTonalButton(onClick = { showOtherNumber = true }, modifier = Modifier.weight(1f).height(48.dp)) {
+                        Icon(Icons.Filled.Edit, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Other number", maxLines = 1)
+                    }
+                    FilledTonalButton(
+                        onClick = { vm.saveToHistory(); toast("Saved to history") },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                    ) { Icon(Icons.Filled.CheckCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Save to history", maxLines = 1) }
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
                     onClick = {
                         withPdf { f, d ->
                             val opened = ShareUtil.sharePdfToWhatsApp(context, f, "Haematology report ${d.reportNo}" +
@@ -368,9 +408,8 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                             if (!opened) toast("WhatsApp not found — choose an app")
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF128C7E), contentColor = Color.White),
-                ) { Icon(Icons.Outlined.Forum, null); Spacer(Modifier.width(10.dp)); Text("Share PDF on WhatsApp") }
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) { Icon(Icons.Outlined.Forum, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("WhatsApp — choose contact") }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     FilledTonalButton(onClick = { onSave() }, modifier = Modifier.weight(1f).height(48.dp)) {
@@ -402,6 +441,40 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
 
     if (showPatient) PatientDialog(vm) { showPatient = false }
     if (showMorph) MorphologySheet(vm) { showMorph = false }
+    if (showOtherNumber) {
+        var num by remember { mutableStateOf("") }
+        val digits = ShareUtil.normalisePhone(num, vm.countryCode)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showOtherNumber = false },
+            containerColor = scheme.surfaceContainerHigh,
+            title = { Text("Send to a WhatsApp number") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = num, onValueChange = { v -> num = v.filter { it.isDigit() || it == '+' || it == ' ' }.take(18) },
+                        label = { Text("Mobile number") }, singleLine = true,
+                        prefix = { if (!num.trim().startsWith("+")) Text("+${vm.countryCode} ") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(digits?.let { "Will open WhatsApp chat with +$it" } ?: "Enter a valid mobile number",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (digits == null) scheme.onSurfaceVariant else scheme.primary, modifier = Modifier.padding(top = 6.dp))
+                }
+            },
+            confirmButton = {
+                Button(enabled = digits != null, onClick = {
+                    showOtherNumber = false
+                    val d0 = digits ?: return@Button
+                    withPdf { f, d ->
+                        val cap = "Haematology report ${d.reportNo}" + if (d.sampleId.isNotBlank()) " · ${d.sampleId}" else ""
+                        if (!ShareUtil.sendPdfToWhatsAppNumber(context, f, d0, cap)) toast("WhatsApp is not installed")
+                    }
+                }) { Text("Send PDF") }
+            },
+            dismissButton = { TextButton(onClick = { showOtherNumber = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 // ====================================================================== AI TAB

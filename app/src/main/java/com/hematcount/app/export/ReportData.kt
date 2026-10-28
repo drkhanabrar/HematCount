@@ -74,6 +74,26 @@ data class ReportData(
     }
 
     companion object {
+        /** Rebuilds a report from a saved history entry (letterhead comes from current settings). */
+        fun fromRecord(r: com.hematcount.app.history.ReportRecord, vm: CounterViewModel) = ReportData(
+            institution = vm.institution.trim(), department = vm.department.trim(), address = vm.address.trim(),
+            reportedBy = r.reportedBy.ifBlank { vm.reportedBy }.trim(),
+            sampleId = r.sampleId, patientName = r.patientName, age = r.age, sex = r.sex,
+            referredBy = r.referredBy, ward = r.ward, remarks = r.remarks, target = r.target,
+            results = com.hematcount.app.model.Calculations.compute(r.counts, r.wbcText, r.applyNrbcCorrection),
+            morphology = MorphologyParam.entries.associateWith { r.morphology[it] ?: 0 },
+            platelet = r.platelet, date = Date(r.updatedAt),
+            aiText = when (r.aiPdfMode) {
+                com.hematcount.app.ai.AiPdfMode.NONE -> ""
+                com.hematcount.app.ai.AiPdfMode.FULL -> r.aiResult.trim()
+                com.hematcount.app.ai.AiPdfMode.INVESTIGATIONS ->
+                    com.hematcount.app.ai.extractInvestigations(r.aiResult).ifBlank { r.aiResult.trim() }
+            },
+            aiProvider = r.aiProviderUsed,
+            aiInvestigationsOnly = r.aiPdfMode == com.hematcount.app.ai.AiPdfMode.INVESTIGATIONS &&
+                com.hematcount.app.ai.extractInvestigations(r.aiResult).isNotBlank(),
+        )
+
         fun from(vm: CounterViewModel) = ReportData(
             institution = vm.institution.trim(),
             department = vm.department.trim(),
