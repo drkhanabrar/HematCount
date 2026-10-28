@@ -164,6 +164,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
     var showMorph by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var showOtherNumber by remember { mutableStateOf(false) }
+    var showSetup by remember { mutableStateOf(false) }
     val results = vm.results()
     val data = ReportData.from(vm)
 
@@ -232,11 +233,15 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                     "Sample ID" to vm.sampleId, "Patient" to vm.patientName, "Age / Sex" to ageSex,
                     "Referred by" to vm.referredBy, "Ward / OPD" to vm.ward,
                     "WhatsApp" to vm.patientPhone,
-                    "Count target" to if (vm.target == 0) "Continuous" else "${vm.target}",
+                    "Test" to vm.mode.label,
+                    "Count target" to if (vm.currentTarget == 0) "Continuous" else "${vm.currentTarget}",
                 ))
             }
         }
 
+        if (vm.mode != com.hematcount.app.model.CounterMode.BLOOD) {
+            vm.modeReport()?.let { rep -> genericResultItems(vm, rep) { showSetup = true } }
+        } else {
         // ---------------- leucocyte count & correction
         item {
             SectionCard("Total leucocyte count") {
@@ -334,6 +339,8 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                     ("Platelets on smear" to if (vm.plateletEstimate == PlateletEstimate.NOT_ASSESSED) "Not assessed" else vm.plateletEstimate.displayName)
                 InfoGrid(items)
             }
+        }
+
         }
 
         // ---------------- remarks
@@ -440,6 +447,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
     }
 
     if (showPatient) PatientDialog(vm) { showPatient = false }
+    if (showSetup) ModeSetupSheet(vm, vm.mode) { showSetup = false }
     if (showMorph) MorphologySheet(vm) { showMorph = false }
     if (showOtherNumber) {
         var num by remember { mutableStateOf("") }
@@ -681,5 +689,109 @@ private fun inlineBold(s: String): AnnotatedString = buildAnnotatedString {
     val parts = s.split("**")
     parts.forEachIndexed { i, p ->
         if (i % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(p) } else append(p)
+    }
+}
+
+
+// ====================================================================== non-blood modes
+private fun androidx.compose.foundation.lazy.LazyListScope.genericResultItems(
+    vm: CounterViewModel,
+    rep: com.hematcount.app.model.ModeReport,
+    onEditSetup: () -> Unit,
+) {
+    if (rep.setup.isNotEmpty() || rep.mode != com.hematcount.app.model.CounterMode.RBC_MORPH) item {
+        SectionCard("Specimen & method", action = {
+            TextButton(onClick = onEditSetup) { Icon(Icons.Filled.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Edit") }
+        }) {
+            InfoGrid(rep.setup)
+        }
+    }
+    item {
+        SectionCard("Results") {
+            rep.indices.forEach { ix -> IndexRow(ix) }
+        }
+    }
+    item { RowsCard(if (rep.mode == com.hematcount.app.model.CounterMode.FLUID) "Chamber count" else "Cell count", rep.rows, rep.extraHeader) }
+    if (rep.rows2.isNotEmpty()) item { RowsCard(rep.rows2Title ?: "Differential", rep.rows2, rep.rows2ExtraHeader) }
+    item {
+        Text(rep.footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp))
+    }
+}
+
+@Composable
+private fun IndexRow(ix: com.hematcount.app.model.ReportIndex) {
+    val scheme = MaterialTheme.colorScheme
+    val clinical = LocalClinicalColors.current
+    val flagColor = when (ix.flag) { Flag.HIGH -> clinical.high; Flag.LOW -> clinical.low; Flag.PRESENT -> clinical.warning; Flag.NONE -> scheme.onSurface }
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(ix.label, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+            ix.sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant.copy(alpha = 0.8f)) }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(ix.value, style = if (ix.emphasise) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold, color = if (ix.flag != Flag.NONE) flagColor else if (ix.emphasise) scheme.primary else scheme.onSurface)
+        if (ix.flag != Flag.NONE) {
+            Spacer(Modifier.width(6.dp))
+            Text(if (ix.flag == Flag.PRESENT) "!" else ix.flag.label, style = MaterialTheme.typography.labelMedium,
+                color = flagColor, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun RowsCard(title: String, rows: List<com.hematcount.app.model.ReportRow>, extraHeader: String) {
+    val scheme = MaterialTheme.colorScheme
+    val clinical = LocalClinicalColors.current
+    SectionCard(title) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(scheme.secondaryContainer).padding(horizontal = 10.dp, vertical = 8.dp)) {
+            val st = MaterialTheme.typography.labelMedium
+            val c = scheme.onSecondaryContainer
+            Text("Cell type · normal", style = st, color = c, modifier = Modifier.weight(1.7f))
+            Text("Count", style = st, color = c, modifier = Modifier.weight(0.6f))
+            Text("%", style = st, color = c, modifier = Modifier.weight(0.6f))
+            if (extraHeader.isNotBlank()) Text(extraHeader, style = st, color = c, modifier = Modifier.weight(1f))
+        }
+        rows.forEachIndexed { i, row ->
+            val flagColor = when (row.flag) { Flag.HIGH -> clinical.high; Flag.LOW -> clinical.low; Flag.PRESENT -> clinical.warning; Flag.NONE -> scheme.onSurface }
+            Row(
+                Modifier.fillMaxWidth().background(if (i % 2 == 1) scheme.surfaceContainerHigh.copy(alpha = 0.6f) else Color.Transparent)
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1.7f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(9.dp).clip(RoundedCornerShape(2.dp)).background(row.accent))
+                        Spacer(Modifier.width(6.dp))
+                        Text(row.name, style = MaterialTheme.typography.bodyMedium,
+                            color = if (row.separate) scheme.onSurfaceVariant else scheme.onSurface,
+                            fontWeight = if (row.flag != Flag.NONE) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (row.normal.isNotBlank()) Text(row.normal, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text("${row.count}", style = MaterialTheme.typography.bodyMedium, color = scheme.onSurface, modifier = Modifier.weight(0.6f))
+                Row(Modifier.weight(0.6f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.percent?.let { fmt1(it) } ?: "—", style = MaterialTheme.typography.bodyMedium, color = flagColor,
+                        fontWeight = if (row.flag != Flag.NONE) FontWeight.Bold else FontWeight.Normal)
+                    if (row.flag != Flag.NONE && extraHeader.isBlank()) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (row.flag == Flag.PRESENT) "!" else row.flag.label, style = MaterialTheme.typography.labelSmall,
+                            color = flagColor, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (extraHeader.isNotBlank()) Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.extra ?: "—", style = MaterialTheme.typography.bodyMedium, color = flagColor, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        fontWeight = if (row.flag != Flag.NONE) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.weight(1f, fill = false))
+                    if (row.flag != Flag.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (row.flag == Flag.PRESENT) "!" else row.flag.label, style = MaterialTheme.typography.labelSmall,
+                            color = flagColor, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

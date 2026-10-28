@@ -3,6 +3,7 @@ package com.hematcount.app.history
 import android.content.Context
 import com.hematcount.app.ai.AiPdfMode
 import com.hematcount.app.model.CellType
+import com.hematcount.app.model.CounterMode
 import com.hematcount.app.model.MorphologyParam
 import com.hematcount.app.model.PlateletEstimate
 import org.json.JSONArray
@@ -33,6 +34,12 @@ data class ReportRecord(
     val aiResult: String = "",
     val aiProviderUsed: String = "",
     val aiPdfMode: AiPdfMode = AiPdfMode.NONE,
+    val mode: CounterMode = CounterMode.BLOOD,
+    /** Counts of the non-blood keypads, by tally key (MARROW, FLUID_CHAMBER, FLUID_DIFF…). */
+    val tallyCounts: Map<String, Map<String, Int>> = emptyMap(),
+    val modeInputs: Map<String, String> = emptyMap(),
+    /** Custom counter definitions (JSON) when mode = CUSTOM. */
+    val customJson: String = "",
 ) {
     val wbcCounted: Int get() = CellType.wbcTypes.sumOf { counts[it] ?: 0 }
 
@@ -45,6 +52,12 @@ data class ReportRecord(
         put("morphology", JSONObject().apply { morphology.forEach { (k, v) -> put(k.name, v) } })
         put("platelet", platelet.name)
         put("aiResult", aiResult); put("aiProviderUsed", aiProviderUsed); put("aiPdfMode", aiPdfMode.name)
+        put("mode", mode.name)
+        put("tallies", JSONObject().apply {
+            tallyCounts.forEach { (k, m) -> put(k, JSONObject().apply { m.forEach { (id, v) -> put(id, v) } }) }
+        })
+        put("inputs", JSONObject(modeInputs as Map<*, *>))
+        put("customJson", customJson)
     }
 
     companion object {
@@ -69,6 +82,14 @@ data class ReportRecord(
                 platelet = runCatching { PlateletEstimate.valueOf(o.optString("platelet")) }.getOrDefault(PlateletEstimate.NOT_ASSESSED),
                 aiResult = o.optString("aiResult"), aiProviderUsed = o.optString("aiProviderUsed"),
                 aiPdfMode = runCatching { AiPdfMode.valueOf(o.optString("aiPdfMode")) }.getOrDefault(AiPdfMode.NONE),
+                mode = runCatching { CounterMode.valueOf(o.optString("mode", "BLOOD")) }.getOrDefault(CounterMode.BLOOD),
+                tallyCounts = o.optJSONObject("tallies")?.let { t ->
+                    t.keys().asSequence().associateWith { k ->
+                        val m = t.getJSONObject(k); m.keys().asSequence().associateWith { id -> m.optInt(id) }
+                    }
+                } ?: emptyMap(),
+                modeInputs = o.optJSONObject("inputs")?.let { i -> i.keys().asSequence().associateWith { k -> i.optString(k) } } ?: emptyMap(),
+                customJson = o.optString("customJson", ""),
             )
         }
     }

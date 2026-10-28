@@ -79,8 +79,9 @@ object AiService {
 
     val SYSTEM_PROMPT = """
 You are an experienced consultant haematopathologist assisting a pathology resident.
-You receive a DE-IDENTIFIED manual peripheral blood differential leucocyte count with
-red cell and platelet morphology. Reference intervals follow Dacie & Lewis Practical
+You receive a DE-IDENTIFIED manual laboratory count: a peripheral blood differential, bone marrow
+aspirate differential (myelogram), CSF or body-fluid cell count, reticulocyte count, red cell
+morphology count, platelet estimate, viability or custom count. Reference intervals follow Dacie & Lewis Practical
 Haematology (12th ed.). Give a concise, structured, educational interpretation.
 
 Use full cell names (no abbreviations for cell types). Absolute counts take precedence over percentages.
@@ -149,7 +150,7 @@ This is decision support only and not a diagnosis.
             .put("messages", JSONArray()
                 .put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
                 .put(JSONObject().put("role", "user").put("content",
-                    "Interpret this peripheral blood smear report:\n\n$reportText")))
+                    "Interpret this laboratory report:\n\n$reportText")))
         try {
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode

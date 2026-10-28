@@ -226,7 +226,9 @@ fun HistoryScreen(vm: CounterViewModel, onBack: () -> Unit, onOpened: () -> Unit
 
                 items(filtered, key = { it.id }) { rec ->
                     val results = Calculations.compute(rec.counts, rec.wbcText, rec.applyNrbcCorrection)
-                    val flagged = results.rows.filter { it.flag != Flag.NONE }.map { it.cell.displayName }
+                    val modeRep = remember(rec.id, rec.updatedAt) { ReportData.recordModeReport(rec) }
+                    val flagged = modeRep?.let { m -> (m.rows + m.rows2).filter { it.flag != Flag.NONE }.map { it.name } }
+                        ?: results.rows.filter { it.flag != Flag.NONE }.map { it.cell.displayName }
                     val isCurrent = rec.id == vm.currentRecordId
                     Surface(
                         shape = MaterialTheme.shapes.large,
@@ -250,7 +252,12 @@ fun HistoryScreen(vm: CounterViewModel, onBack: () -> Unit, onOpened: () -> Unit
                                 }
                             }
                             Spacer(Modifier.height(6.dp))
-                            Text(
+                            if (modeRep != null) Text(
+                                rec.mode.label + " · ${modeRep.totalLabel.lowercase()}: ${modeRep.total}" +
+                                    (modeRep.indices.firstOrNull()?.let { " · ${it.label}: ${it.value}" } ?: ""),
+                                style = MaterialTheme.typography.bodyMedium, color = scheme.onSurface,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            ) else Text(
                                 "${rec.wbcCounted} leucocytes" +
                                     (Calculations.parseWbc(rec.wbcText)?.let { " · TLC ${Calculations.fmt2(it)} ×10³/µL" } ?: "") +
                                     (if (results.nrbcCount > 0) " · nRBC ${Calculations.fmt1(results.nrbcPer100)}/100" else ""),

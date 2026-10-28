@@ -29,13 +29,19 @@ import kotlin.random.Random
  * has a darker membrane outline so it never blends into a dark background.
  */
 
-private val NUC_DARK = Color(0xFF3F2169)
-private val NUC = Color(0xFF5B3590)
-private val NUC_LIGHT = Color(0xFF8460B4)
+internal val NUC_DARK = Color(0xFF3F2169)
+internal val NUC = Color(0xFF5B3590)
+internal val NUC_LIGHT = Color(0xFF8460B4)
 
 @Composable
-fun CellIllustration(cell: CellType, modifier: Modifier = Modifier) {
-    Canvas(modifier) { drawCell(cell) }
+fun CellIllustration(cell: com.hematcount.app.model.CountItem, modifier: Modifier = Modifier) {
+    val id = cell.drawId
+    Canvas(modifier) { drawCellId(id) }
+}
+
+fun DrawScope.drawCellId(id: String) {
+    val blood = CellType.entries.firstOrNull { it.name == id }
+    if (blood != null) drawCell(blood) else drawExtraCell(id)
 }
 
 fun DrawScope.drawCell(cell: CellType) {
@@ -185,12 +191,12 @@ fun DrawScope.drawCell(cell: CellType) {
 
 // ------------------------------------------------------------------ helpers
 
-private fun DrawScope.cytoplasm(c: Offset, r: Float, inner: Color, outer: Color) {
+internal fun DrawScope.cytoplasm(c: Offset, r: Float, inner: Color, outer: Color) {
     drawCircle(Brush.radialGradient(0f to inner, 0.75f to inner, 1f to outer, center = c, radius = r), r, c)
     drawCircle(outer.darken(0.35f), r, c, style = Stroke(r * 0.045f))
 }
 
-private fun DrawScope.lobe(p: Offset, rx: Float, ry: Float, deg: Float, alpha: Float = 1f) {
+internal fun DrawScope.lobe(p: Offset, rx: Float, ry: Float, deg: Float, alpha: Float = 1f) {
     rotate(deg, p) {
         val rect = Rect(p.x - rx, p.y - ry, p.x + rx, p.y + ry)
         drawOval(Brush.radialGradient(listOf(NUC_LIGHT, NUC, NUC_DARK),
@@ -200,18 +206,18 @@ private fun DrawScope.lobe(p: Offset, rx: Float, ry: Float, deg: Float, alpha: F
     chromatin(p, rx * 0.7f, 10, NUC_DARK, (p.x * 7 + p.y).toInt())
 }
 
-private fun DrawScope.chromatinBridge(a: Offset, b: Offset, w: Float) {
+internal fun DrawScope.chromatinBridge(a: Offset, b: Offset, w: Float) {
     drawLine(NUC_DARK, a, b, w, StrokeCap.Round)
 }
 
-private fun DrawScope.nucleusOval(p: Offset, rx: Float, ry: Float, base: Color, light: Color) {
+internal fun DrawScope.nucleusOval(p: Offset, rx: Float, ry: Float, base: Color, light: Color) {
     val tl = Offset(p.x - rx, p.y - ry)
     val sz = Size(rx * 2, ry * 2)
     drawOval(Brush.radialGradient(listOf(light, base), Offset(p.x - rx * 0.3f, p.y - ry * 0.3f), rx * 1.3f), tl, sz)
     drawOval(base.darken(0.3f), tl, sz, style = Stroke(rx * 0.05f))
 }
 
-private fun DrawScope.granules(
+internal fun DrawScope.granules(
     c: Offset, maxR: Float, n: Int, color: Color, minSize: Float, maxSize: Float, seed: Int,
     highlight: Color? = null,
 ) {
@@ -226,7 +232,7 @@ private fun DrawScope.granules(
     }
 }
 
-private fun DrawScope.chromatin(c: Offset, maxR: Float, n: Int, color: Color, seed: Int, dot: Float = 0.035f) {
+internal fun DrawScope.chromatin(c: Offset, maxR: Float, n: Int, color: Color, seed: Int, dot: Float = 0.035f) {
     val rnd = Random(seed)
     repeat(n) {
         val a = rnd.nextFloat() * 2 * PI.toFloat()
@@ -237,14 +243,14 @@ private fun DrawScope.chromatin(c: Offset, maxR: Float, n: Int, color: Color, se
 }
 
 /** Oval with a circular bite taken out → kidney / bean-shaped nucleus. */
-private fun kidneyPath(c: Offset, rx: Float, ry: Float, biteCenter: Offset, biteR: Float): Path {
+internal fun kidneyPath(c: Offset, rx: Float, ry: Float, biteCenter: Offset, biteR: Float): Path {
     val oval = Path().apply { addOval(Rect(c.x - rx, c.y - ry, c.x + rx, c.y + ry)) }
     val bite = Path().apply { addOval(Rect(biteCenter.x - biteR, biteCenter.y - biteR, biteCenter.x + biteR, biteCenter.y + biteR)) }
     return Path().apply { op(oval, bite, PathOperation.Difference) }
 }
 
 /** Irregular rounded outline; [dents] are angles (radians) where neighbouring red cells indent it. */
-private fun blobPath(c: Offset, r: Float, seed: Int, wobble: Float = 0.05f, dents: List<Float> = emptyList()): Path {
+internal fun blobPath(c: Offset, r: Float, seed: Int, wobble: Float = 0.05f, dents: List<Float> = emptyList()): Path {
     val rnd = Random(seed)
     val phase1 = rnd.nextFloat() * 6f
     val phase2 = rnd.nextFloat() * 6f
@@ -266,4 +272,4 @@ private fun blobPath(c: Offset, r: Float, seed: Int, wobble: Float = 0.05f, dent
     return path
 }
 
-private fun Color.darken(f: Float) = Color(red * (1 - f), green * (1 - f), blue * (1 - f), alpha)
+internal fun Color.darken(f: Float) = Color(red * (1 - f), green * (1 - f), blue * (1 - f), alpha)

@@ -69,7 +69,7 @@ import com.hematcount.app.model.REFERENCE_SOURCES
 
 // ====================================================================== reference card (long press)
 @Composable
-fun ReferenceCardDialog(cell: CellType, onDismiss: () -> Unit) {
+fun ReferenceCardDialog(cell: com.hematcount.app.model.CountItem, onDismiss: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val ref = cell.reference
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -91,24 +91,27 @@ fun ReferenceCardDialog(cell: CellType, onDismiss: () -> Unit) {
                         Text(cell.displayName, style = MaterialTheme.typography.headlineSmall)
                         Text(cell.group, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                         Spacer(Modifier.height(6.dp))
-                        Surface(color = scheme.secondaryContainer, contentColor = scheme.onSecondaryContainer, shape = CircleShape) {
-                            Text(
-                                if (cell.countsInWbc) "Normal ${cell.refPercent} %" + (if (cell.refAbsolute != "—") " · ${cell.refAbsolute} ×10³/µL" else "")
-                                else "Normal ${cell.refPercent}",
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            )
+                        if (cell.normalText.isNotBlank()) {
+                            Surface(color = scheme.secondaryContainer, contentColor = scheme.onSecondaryContainer, shape = CircleShape) {
+                                Text("Normal ${cell.normalText}", style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                            }
                         }
                     }
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
                 }
                 Spacer(Modifier.height(16.dp))
-                RefRow(Icons.Outlined.Straighten, "Size", ref.size)
-                RefRow(Icons.Outlined.Lens, "Nucleus", ref.nucleus)
-                RefRow(Icons.Outlined.Grain, "Cytoplasm & granules", ref.cytoplasm)
-                RefRow(Icons.Outlined.ColorLens, "Staining characteristics", ref.staining)
-                RefRow(Icons.Outlined.Biotech, "Increased in / seen in", ref.increasedIn)
-                RefRow(Icons.Outlined.Info, "Decreased in / notes", ref.decreasedIn)
+                if (ref != null) {
+                    RefRow(Icons.Outlined.Straighten, "Size", ref.size)
+                    RefRow(Icons.Outlined.Lens, "Nucleus", ref.nucleus)
+                    RefRow(Icons.Outlined.Grain, "Cytoplasm & granules", ref.cytoplasm)
+                    RefRow(Icons.Outlined.ColorLens, "Staining characteristics", ref.staining)
+                    RefRow(Icons.Outlined.Biotech, "Increased in / seen in", ref.increasedIn)
+                    RefRow(Icons.Outlined.Info, "Decreased in / notes", ref.decreasedIn)
+                } else {
+                    Text("No reference card for this counter. Custom counters can be described in the report remarks.",
+                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                }
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), color = scheme.outlineVariant)
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(Icons.AutoMirrored.Outlined.MenuBook, null, Modifier.size(16.dp), tint = scheme.onSurfaceVariant)

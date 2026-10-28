@@ -24,6 +24,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.hematcount.app.model.Calculations
+import com.hematcount.app.model.CountItem
+import com.hematcount.app.model.CounterMode
+import com.hematcount.app.model.FluidItems
+import com.hematcount.app.model.FluidPreset
+import com.hematcount.app.model.MarrowCell
+import com.hematcount.app.model.ModeCalc
+import com.hematcount.app.model.ModeReport
+import com.hematcount.app.model.PlateletItems
+import com.hematcount.app.model.RbcItems
+import com.hematcount.app.model.RetItems
+import com.hematcount.app.model.SimpleItem
+import com.hematcount.app.model.ViabilityItems
+import com.hematcount.app.model.defaultCustomItems
+import org.json.JSONArray
+import org.json.JSONObject
 import com.hematcount.app.model.CellType
 import com.hematcount.app.model.CountResults
 import com.hematcount.app.model.MorphologyParam
@@ -31,7 +46,7 @@ import com.hematcount.app.model.PlateletEstimate
 import com.hematcount.app.ui.theme.ThemeMode
 
 /** Target choices. 0 = continuous (no limit). */
-val TARGET_OPTIONS = listOf(50, 100, 200, 500, 0)
+val TARGET_OPTIONS = listOf(50, 100, 200, 300, 500, 1000, 0)
 
 fun targetLabel(t: Int) = if (t == 0) "Continuous" else "$t cells"
 
@@ -96,10 +111,179 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     var lastBackupError by mutableStateOf<String?>(null); private set
     var backupIncludeKeys by mutableStateOf(false)
 
+    // ---- Multi-mode counters ----
+    var mode by mutableStateOf(CounterMode.BLOOD); private set
+    /** Mode-specific settings and sample fields (dilution, preset, haematocrit, cellularity…). */
+    val inputs = mutableStateMapOf<String, String>()
+    val customItems = mutableStateListOf<SimpleItem>()
+    val tallies: Map<String, Tally> = linkedMapOf(
+        "MARROW" to Tally("MARROW", 500),
+        "FLUID_CHAMBER" to Tally("FLUID_CHAMBER", 0),
+        "FLUID_DIFF" to Tally("FLUID_DIFF", 100),
+        "RETIC" to Tally("RETIC", 1000),
+        "RBC_MORPH" to Tally("RBC_MORPH", 1000),
+        "PLATELET" to Tally("PLATELET", 0),
+        "VIABILITY" to Tally("VIABILITY", 0),
+        "CUSTOM" to Tally("CUSTOM", 100),
+    )
+    /** Fluid mode: 0 = chamber count, 1 = differential. */
+    var fluidStage by mutableStateOf(0)
+
+    // ---- Feedback, flash and messages (shared by touch and hardware keyboard) ----
+    val feedback = Feedback(app)
+    var flashId by mutableStateOf<String?>(null); private set
+    var flashTick by mutableStateOf(0L); private set
+    var messageText by mutableStateOf<String?>(null); private set
+    var messageAction by mutableStateOf<String?>(null); private set
+    var messageTick by mutableStateOf(0L); private set
+
     init {
         load()
         history.addAll(HistoryStore.load(app))
     }
+
+    // ================================================================= modes
+    fun input(key: String, default: String = ""): String = inputs[key] ?: default
+    fun setInput(key: String, value: String) { inputs[key] = value; save() }
+
+    val fluidPreset: FluidPreset get() =
+        runCatching { FluidPreset.valueOf(inputs["fl.preset"] ?: "CSF") }.getOrDefault(FluidPreset.CSF)
+
+    fun setFluidPreset(p: FluidPreset) {
+        inputs["fl.preset"] = p.name
+        inputs["fl.dilution"] = p.defaultDilution.toString()
+        inputs["fl.squares"] = p.defaultSquares.joinToString(",")
+        if (!p.hasDifferential) fluidStage = 0
+        save()
+    }
+
+    val fluidSquares: List<String> get() =
+        inputs["fl.squares"]?.split(",")?.filter { it.isNotBlank() } ?: fluidPreset.defaultSquares
+
+    fun toggleSquare(id: String) {
+        val cur = fluidSquares.toMutableList()
+        if (id in cur) cur.remove(id) else cur.add(id)
+        inputs["fl.squares"] = cur.joinToString(","); save()
+    }
+
+    fun switchMode(m: CounterMode) {
+        if (mode == m) return
+        mode = m; correctionMode = false; showTargetDialog = false
+        save()
+    }
+
+    private fun activeTallyKey(): String? = when (mode) {
+        CounterMode.BLOOD -> null
+        CounterMode.FLUID -> if (fluidStage == 1 && fluidPreset.hasDifferential) "FLUID_DIFF" else "FLUID_CHAMBER"
+        else -> mode.name
+    }
+
+    fun activeTally(): Tally? = activeTallyKey()?.let { tallies[it] }
+
+    fun itemsFor(m: CounterMode, stage: Int = fluidStage): List<CountItem> = when (m) {
+        CounterMode.BLOOD -> CellType.keypadOrder
+        CounterMode.MARROW -> MarrowCell.keypadOrder
+        CounterMode.FLUID -> if (stage == 1 && fluidPreset.hasDifferential) FluidItems.differentialItems(fluidPreset)
+            else FluidItems.chamberItems(fluidPreset)
+        CounterMode.RETIC -> RetItems.items(inputs["rt.miller"] == "1")
+        CounterMode.RBC_MORPH -> RbcItems.items
+        CounterMode.PLATELET -> PlateletItems.items
+        CounterMode.VIABILITY -> ViabilityItems.items
+        CounterMode.CUSTOM -> customItems.toList()
+    }
+
+    fun activeItems(): List<CountItem> = itemsFor(mode)
+
+    fun countOf(item: CountItem): Int =
+        if (item is CellType) counts[item] ?: 0 else activeTally()?.count(item.id) ?: 0
+
+    val currentTotal: Int get() = activeTally()?.total(activeItems()) ?: wbcCounted
+    val currentTarget: Int get() = activeTally()?.target ?: target
+    val currentLocked: Boolean get() = activeTally()?.locked ?: locked
+    val currentCanUndo: Boolean get() = activeTally()?.canUndo ?: canUndo
+
+    fun setCurrentTarget(t: Int) {
+        val tl = activeTally()
+        if (tl == null) setTargetValue(t) else { tl.setTarget(t, activeItems()); save() }
+    }
+
+    fun continueCurrent(next: Int) {
+        val tl = activeTally()
+        if (tl == null) continueCounting(next) else { tl.setTarget(next, activeItems()); showTargetDialog = false; save() }
+    }
+
+    private fun flash(id: String) { flashId = id; flashTick = System.nanoTime() }
+
+    fun showMessage(text: String, action: String? = null) {
+        messageText = text; messageAction = action; messageTick = System.nanoTime()
+    }
+
+    /** One count from the keypad or a hardware key. */
+    fun press(item: CountItem, fromKeyboard: Boolean = false): TapResult {
+        val result = if (item is CellType) tap(item) else {
+            val tl = activeTally() ?: return TapResult.NOTHING_TO_REMOVE
+            tl.tap(item, activeItems(), correctionMode).also {
+                if (it == TapResult.TARGET_REACHED) showTargetDialog = true
+                save()
+            }
+        }
+        when (result) {
+            TapResult.ADDED -> feedback.tap(hapticsOn, tapSoundOn)
+            TapResult.REMOVED -> feedback.correction(hapticsOn, tapSoundOn)
+            TapResult.NOTHING_TO_REMOVE -> { feedback.denied(hapticsOn); showMessage("${item.displayName}: nothing to subtract") }
+            TapResult.LOCKED -> { feedback.denied(hapticsOn); showMessage("Target reached — keypad locked", "Continue") }
+            TapResult.TARGET_REACHED -> feedback.targetReached(hapticsOn, alarmOn)
+        }
+        if (fromKeyboard && (result == TapResult.ADDED || result == TapResult.REMOVED || result == TapResult.TARGET_REACHED)) flash(item.id)
+        return result
+    }
+
+    /** Undo the last change in the current mode and flash that counter. */
+    fun undoActive() {
+        val tl = activeTally()
+        val id = if (tl == null) undo()?.name else tl.undo(activeItems()).also { save() }
+        if (id != null) { feedback.correction(hapticsOn, false); flash(id) }
+    }
+
+    /** Hardware keyboard: 1–9, 0 then Q…P, A…L map to keypad positions in reading order. */
+    fun hardwareKey(index: Int): Boolean {
+        val items = activeItems()
+        if (index !in items.indices) return false
+        press(items[index], fromKeyboard = true)
+        return true
+    }
+
+    fun modeReport(m: CounterMode = mode): ModeReport? {
+        fun c(k: String) = tallies.getValue(k).counts.toMap()
+        fun t(k: String) = tallies.getValue(k).target
+        return when (m) {
+            CounterMode.BLOOD -> null
+            CounterMode.MARROW -> ModeCalc.marrow(c("MARROW"), inputs.toMap(), t("MARROW"))
+            CounterMode.FLUID -> ModeCalc.fluid(c("FLUID_CHAMBER"), c("FLUID_DIFF"), inputs.toMap(), t("FLUID_DIFF"))
+            CounterMode.RETIC -> ModeCalc.retic(c("RETIC"), inputs.toMap(), t("RETIC"))
+            CounterMode.RBC_MORPH -> ModeCalc.rbcMorph(c("RBC_MORPH"), t("RBC_MORPH"))
+            CounterMode.PLATELET -> ModeCalc.platelet(c("PLATELET"), inputs.toMap())
+            CounterMode.VIABILITY -> ModeCalc.viability(c("VIABILITY"), inputs.toMap())
+            CounterMode.CUSTOM -> ModeCalc.custom(customItems.toList(), c("CUSTOM"), inputs.toMap(), t("CUSTOM"))
+        }
+    }
+
+    // custom counters editing
+    fun upsertCustom(item: SimpleItem) {
+        val i = customItems.indexOfFirst { it.id == item.id }
+        if (i >= 0) customItems[i] = item else customItems.add(item)
+        save()
+    }
+    fun removeCustom(item: SimpleItem) { customItems.removeAll { it.id == item.id }; tallies.getValue("CUSTOM").counts.remove(item.id); save() }
+    fun moveCustom(index: Int, delta: Int) {
+        val j = index + delta
+        if (index !in customItems.indices || j !in customItems.indices) return
+        val it = customItems.removeAt(index); customItems.add(j, it); save()
+    }
+
+    /** Per-sample fields cleared by "New sample" (setup such as dilution and presets is kept). */
+    private val perSampleInputs = listOf("bm.site", "bm.particles", "bm.cellularity", "bm.mega", "bm.iron",
+        "fl.appearance", "fl.volume", "fl.bloodWbc", "fl.bloodRbc", "rt.hct", "rt.rbc")
 
     private val ctx get() = getApplication<Application>()
 
@@ -115,6 +299,10 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
             wbcText = wbcText, applyNrbcCorrection = applyNrbcCorrection, target = target,
             counts = counts.toMap().filterValues { it > 0 }, morphology = morphology.toMap().filterValues { it > 0 },
             platelet = plateletEstimate, aiResult = aiResult, aiProviderUsed = aiProviderUsed, aiPdfMode = aiPdfMode,
+            mode = mode,
+            tallyCounts = tallies.mapValues { (_, t) -> t.counts.toMap().filterValues { it > 0 } }.filterValues { it.isNotEmpty() },
+            modeInputs = inputs.toMap(),
+            customJson = if (mode == CounterMode.CUSTOM) encodeCustom(customItems) else "",
         )
         history.removeAll { it.id == rec.id }
         history.add(0, rec)
@@ -139,6 +327,10 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
         aiAttempts.clear()
         correctionMode = false; showTargetDialog = false
         locked = target != 0 && wbcCounted >= target
+        mode = rec.mode
+        tallies.forEach { (k, t) -> t.load(rec.tallyCounts[k] ?: emptyMap()); t.locked = false }
+        rec.modeInputs.forEach { (k, v) -> inputs[k] = v }
+        decodeCustom(rec.customJson.ifBlank { null })?.let { customItems.clear(); customItems.addAll(it) }
         currentRecordId = rec.id
         save()
     }
@@ -351,6 +543,9 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
         sampleId = ""; patientName = ""; patientAge = ""; patientSex = ""
         referredBy = ""; ward = ""; remarks = ""; wbcText = ""; patientPhone = ""
         aiResult = ""; aiProviderUsed = ""; aiAttempts.clear(); aiPdfMode = AiPdfMode.NONE
+        tallies.values.forEach { it.clear() }
+        perSampleInputs.forEach { inputs.remove(it) }
+        fluidStage = 0
         save()
     }
 
@@ -387,6 +582,14 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
             putString("aiProviders", AiProvider.listToJson(aiProviders))
             putString("aiResult", aiResult); putString("aiProviderUsed", aiProviderUsed)
             putString("aiPdfMode", aiPdfMode.name)
+            putString("mode", mode.name)
+            putInt("fluidStage", fluidStage)
+            putString("inputs", JSONObject(inputs.toMap() as Map<*, *>).toString())
+            putString("customItems", encodeCustom(customItems))
+            tallies.values.forEach { t ->
+                putString("t_${t.key}_counts", t.encodeCounts()); putString("t_${t.key}_undo", t.encodeUndo())
+                putInt("t_${t.key}_target", t.target); putBoolean("t_${t.key}_locked", t.locked)
+            }
         }.apply()
     }
 
@@ -452,5 +655,36 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
         lastBackupAt = prefs.getLong("lastBackupAt", 0L)
         lastBackupError = prefs.getString("lastBackupError", null)
         backupIncludeKeys = prefs.getBoolean("backupIncludeKeys", false)
+        mode = runCatching { CounterMode.valueOf(prefs.getString("mode", "BLOOD")!!) }.getOrDefault(CounterMode.BLOOD)
+        fluidStage = prefs.getInt("fluidStage", 0)
+        inputs.clear()
+        runCatching {
+            val o = JSONObject(prefs.getString("inputs", "{}") ?: "{}")
+            o.keys().forEach { k -> inputs[k] = o.optString(k) }
+        }
+        customItems.clear()
+        customItems.addAll(decodeCustom(prefs.getString("customItems", null)) ?: defaultCustomItems())
+        tallies.values.forEach { t ->
+            t.decode(prefs.getString("t_${t.key}_counts", null), prefs.getString("t_${t.key}_undo", null))
+            t.target = prefs.getInt("t_${t.key}_target", t.target)
+            t.locked = prefs.getBoolean("t_${t.key}_locked", false)
+        }
     }
 }
+
+fun encodeCustom(items: List<SimpleItem>): String = JSONArray().apply {
+    items.forEach { put(JSONObject().put("id", it.id).put("name", it.displayName).put("color", it.accent.value.toLong() ushr 32).put("icon", it.drawId).put("inTotal", it.countsInTotal)) }
+}.toString()
+
+fun decodeCustom(s: String?): List<SimpleItem>? = runCatching {
+    if (s == null) return null
+    val a = JSONArray(s)
+    (0 until a.length()).map { i ->
+        val o = a.getJSONObject(i)
+        SimpleItem(
+            id = o.getString("id"), displayName = o.optString("name", "Cell"), group = "Custom",
+            accent = androidx.compose.ui.graphics.Color(o.optLong("color", 0xFF2563EB)),
+            drawId = o.optString("icon", "NEUTROPHIL"), countsInTotal = o.optBoolean("inTotal", true),
+        )
+    }
+}.getOrNull()

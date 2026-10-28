@@ -69,10 +69,20 @@ object PdfReport {
 
         title(s)
         patientPanel(s)
-        differentialTable(s)
-        indicesAndChart(s)
-        alerts(s)
-        morphology(s)
+        val m = data.modeReport
+        if (m == null) {
+            differentialTable(s)
+            indicesAndChart(s)
+            alerts(s)
+            morphology(s)
+        } else {
+            setupPanel(s, m)
+            genericTable(s, m.title.substringBefore(" —").let { if (m.mode == com.hematcount.app.model.CounterMode.FLUID) "Chamber count" else "Cell count" },
+                m.rows, m.extraHeader)
+            if (m.rows2.isNotEmpty()) genericTable(s, m.rows2Title ?: "Differential", m.rows2, m.rows2ExtraHeader)
+            genericIndices(s, m)
+            alerts(s)
+        }
         remarks(s)
         aiSection(s)
         signatures(s)
@@ -148,7 +158,7 @@ object PdfReport {
         c.drawText("HAEMATOLOGY REPORT", rx, 29f, tag)
         c.drawText("Report No.  ${d.reportNo}", rx, 45f, text(8.5f, Color.argb(230, 255, 255, 255), MEDIUM, Paint.Align.RIGHT))
         c.drawText(d.dateText, rx, 57f, text(8.5f, Color.argb(210, 255, 255, 255), REGULAR, Paint.Align.RIGHT))
-        c.drawText("Peripheral blood smear", rx, 69f, text(8.5f, Color.argb(210, 255, 255, 255), REGULAR, Paint.Align.RIGHT))
+        c.drawText(d.modeReport?.specimen?.let { ellipsize(it, text(8.5f), rightBlockW) } ?: "Peripheral blood smear", rx, 69f, text(8.5f, Color.argb(210, 255, 255, 255), REGULAR, Paint.Align.RIGHT))
         s.y = bandH + 24f
     }
 
@@ -169,8 +179,9 @@ object PdfReport {
         c.drawLine(M, top, W - M, top, stroke(LINE))
         val p = text(7f, MUTED)
         val lines = wrap(
-            "Reference intervals (adults): $REFERENCE_SOURCES. H = above and L = below the reference interval; " +
-                "\"Present\" = cell type not normally seen in peripheral blood. Absolute counts in ×10³/µL (equivalent to ×10⁹/L).",
+            s.data.modeReport?.let { m -> "${m.footnote} H = above and L = below the reference interval; \"Present\" = not normally seen." }
+                ?: ("Reference intervals (adults): $REFERENCE_SOURCES. H = above and L = below the reference interval; " +
+                    "\"Present\" = cell type not normally seen in peripheral blood. Absolute counts in ×10³/µL (equivalent to ×10⁹/L)."),
             p, W - 2 * M,
         )
         var y = top + 11f
@@ -193,10 +204,11 @@ object PdfReport {
 
     private fun title(s: PageState) {
         val c = s.canvas
-        c.drawText("Manual Differential Leucocyte Count", M, s.y, text(14f, NAVY, BOLD))
+        val m = s.data.modeReport
+        c.drawText(ellipsize(m?.title ?: "Manual Differential Leucocyte Count", text(14f, face = BOLD), 330f), M, s.y, text(14f, NAVY, BOLD))
         val r = s.data.results
-        val counted = "Leucocytes counted: ${r.wbcCounted}" +
-            (if (s.data.target != 0) "  /  Target ${s.data.target}" else "  ·  Continuous count")
+        val counted = if (m != null) "${m.totalLabel}: ${m.total}" + (if (m.target != 0) "  /  Target ${m.target}" else "")
+        else "Leucocytes counted: ${r.wbcCounted}" + (if (s.data.target != 0) "  /  Target ${s.data.target}" else "  ·  Continuous count")
         c.drawText(counted, W - M, s.y, text(9f, MUTED, MEDIUM, Paint.Align.RIGHT))
         s.y += 14f
     }
@@ -214,7 +226,7 @@ object PdfReport {
             .filter { it.isNotBlank() }.joinToString(" / ")
         val items = listOf(
             "Patient name" to d.patientName, "Age / Sex" to ageSex, "Sample ID" to d.sampleId,
-            "Referred by" to d.referredBy, "Ward / OPD" to d.ward, "Specimen" to "EDTA peripheral blood smear",
+            "Referred by" to d.referredBy, "Ward / OPD" to d.ward, "Specimen" to (d.modeReport?.specimen ?: "EDTA peripheral blood smear"),
         )
         items.forEachIndexed { i, (label, value) ->
             val col = i % 3; val row = i / 3
@@ -301,6 +313,121 @@ object PdfReport {
         s.y += 20f
         c.drawLine(x0, s.y, x7, s.y, stroke(LINE))
         s.y += 16f
+    }
+
+    // ------------------------------------------------------------------ generic (non-blood) modes
+    private fun setupPanel(s: PageState, m: com.hematcount.app.model.ModeReport) {
+        val items = m.setup.filter { it.first != "Specimen" }
+        if (items.isEmpty()) return
+        val cols = 2
+        val rowH = 20f
+        val rows = (items.size + cols - 1) / cols
+        val h = rows * rowH + 10f
+        ensure(s, h + 30f)
+        sectionTitle(s, "Specimen details")
+        val c = s.canvas
+        val top = s.y
+        val rect = RectF(M, top, W - M, top + h)
+        c.drawRoundRect(rect, 6f, 6f, fill(PANEL)); c.drawRoundRect(rect, 6f, 6f, stroke(LINE))
+        val colW = (W - 2 * M) / cols
+        items.forEachIndexed { i, (k, v) ->
+            val x = M + 12f + (i % cols) * colW
+            val y = top + 18f + (i / cols) * rowH
+            c.drawText(k, x, y, text(8f, MUTED, MEDIUM))
+            c.drawText(ellipsize(v, text(8.6f, face = BOLD), colW - 120f), x + 105f, y, text(8.6f, INK, BOLD))
+        }
+        s.y = top + h + 18f
+    }
+
+    private fun genericTable(s: PageState, title: String, rows: List<com.hematcount.app.model.ReportRow>, extraHeader: String) {
+        val rowH = 16f
+        ensure(s, 26f + 22f + rowH * minOf(rows.size, 6))
+        sectionTitle(s, title)
+        val c = s.canvas
+        val x0 = M; val xCount = 232f; val xPct = 282f; val xExtra = 334f; val xNormal = 430f; val xFlag = 505f; val x7 = W - M
+        val hTop = s.y; val hH = 22f
+        c.drawRoundRect(RectF(x0, hTop, x7, hTop + hH), 4f, 4f, fill(NAVY))
+        val hp = text(7f, Color.WHITE, BOLD)
+        val hpc = text(7f, Color.WHITE, BOLD, Paint.Align.CENTER)
+        c.drawText("CELL TYPE", x0 + 10f, hTop + 14f, hp)
+        c.drawText("COUNT", (xCount + xPct) / 2, hTop + 14f, hpc)
+        c.drawText("%", (xPct + xExtra) / 2, hTop + 14f, hpc)
+        c.drawText(extraHeader.uppercase().ifBlank { "—" }, (xExtra + xNormal) / 2, hTop + 14f, hpc)
+        c.drawText("NORMAL RANGE", (xNormal + xFlag) / 2, hTop + 14f, hpc)
+        c.drawText("FLAG", (xFlag + x7) / 2, hTop + 14f, hpc)
+        s.y = hTop + hH
+        var separatorDrawn = false
+        rows.forEachIndexed { i, r ->
+            if (s.y + rowH > CONTENT_BOTTOM) { finishPage(s); newPage(s, first = false) }
+            val cc = s.canvas
+            if (r.separate && !separatorDrawn) { cc.drawLine(x0, s.y, x7, s.y, stroke(NAVY, 0.8f)); separatorDrawn = true }
+            val top = s.y
+            if (i % 2 == 1) cc.drawRect(x0, top, x7, top + rowH, fill(ZEBRA))
+            val base = top + 11.2f
+            val flagged = r.flag != Flag.NONE
+            cc.drawRoundRect(RectF(x0 + 9f, top + 4.8f, x0 + 15.5f, top + 11.3f), 1.5f, 1.5f, fill(r.accent.toArgb()))
+            cc.drawText(ellipsize(r.name, text(8.6f, face = BOLD), xCount - x0 - 28f), x0 + 22f, base,
+                text(8.6f, if (r.separate) MUTED else INK, if (flagged) BOLD else MEDIUM))
+            val vp = text(8.6f, INK, if (flagged) BOLD else REGULAR, Paint.Align.CENTER)
+            cc.drawText(r.count.toString(), (xCount + xPct) / 2, base, vp)
+            cc.drawText(r.percent?.let { com.hematcount.app.model.Calculations.fmt1(it) } ?: "—", (xPct + xExtra) / 2, base, vp)
+            cc.drawText(ellipsize(r.extra ?: "—", text(8.2f), xNormal - xExtra - 4f), (xExtra + xNormal) / 2, base,
+                text(8.2f, INK, if (flagged) BOLD else REGULAR, Paint.Align.CENTER))
+            cc.drawText(ellipsize(r.normal.ifBlank { "—" }, text(7.6f), xFlag - xNormal - 4f), (xNormal + xFlag) / 2, base,
+                text(7.6f, MUTED, REGULAR, Paint.Align.CENTER))
+            drawFlag(cc, r.flag, (xFlag + x7) / 2, top + rowH / 2)
+            s.y += rowH
+        }
+        s.canvas.drawLine(x0, s.y, x7, s.y, stroke(LINE))
+        s.y += 20f
+    }
+
+    private fun genericIndices(s: PageState, m: com.hematcount.app.model.ModeReport) {
+        val counted = m.rows.filter { !it.separate && it.percent != null && it.count > 0 }
+        val boxH = maxOf(20f + m.indices.sumOf { (if (it.sub != null) 24.0 else 19.0) }.toFloat(), if (counted.isNotEmpty()) 112f else 0f)
+        ensure(s, boxH + 30f)
+        sectionTitle(s, "Results")
+        val c = s.canvas
+        val top = s.y
+        val showChart = counted.isNotEmpty()
+        val gap = 12f
+        val leftW = if (showChart) (W - 2 * M - gap) * 0.56f else W - 2 * M
+        val l = RectF(M, top, M + leftW, top + boxH)
+        c.drawRoundRect(l, 6f, 6f, fill(PANEL)); c.drawRoundRect(l, 6f, 6f, stroke(LINE))
+        var y = top + 20f
+        m.indices.forEach { ix ->
+            c.drawText(ellipsize(ix.label, text(8.2f), leftW * 0.55f), l.left + 12f, y, text(8.2f, MUTED, MEDIUM))
+            val vx = l.right - (if (ix.flag != Flag.NONE) 46f else 12f)
+            val vp = text(if (ix.emphasise) 10.2f else 9f, if (ix.emphasise) NAVY else INK, BOLD, Paint.Align.RIGHT)
+            c.drawText(ellipsize(ix.value, vp, leftW * 0.42f), vx, y, vp)
+            if (ix.flag != Flag.NONE) drawFlag(c, ix.flag, l.right - 24f, y - 3f)
+            if (ix.sub != null) c.drawText(ellipsize(ix.sub, text(6.8f), leftW - 24f), l.left + 12f, y + 9.5f, text(6.8f, MUTED))
+            y += if (ix.sub != null) 24f else 19f
+        }
+        if (showChart) {
+            val rt = RectF(l.right + gap, top, W - M, top + boxH)
+            c.drawRoundRect(rt, 6f, 6f, fill(PANEL)); c.drawRoundRect(rt, 6f, 6f, stroke(LINE))
+            val cx = rt.left + 50f; val cy = top + boxH / 2; val radius = 32f
+            val oval = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
+            val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 12f }
+            val tot = counted.sumOf { it.count }.coerceAtLeast(1)
+            var start = -90f
+            counted.forEach { r ->
+                val sweep = r.count * 360f / tot
+                arc.color = r.accent.toArgb(); c.drawArc(oval, start, sweep, false, arc)
+                start += sweep
+            }
+            c.drawText(m.total.toString(), cx, cy + 3f, text(13f, NAVY, BOLD, Paint.Align.CENTER))
+            val lx = rt.left + 96f
+            var ly = top + 16f
+            counted.sortedByDescending { it.count }.take(((boxH - 12f) / 12.4f).toInt().coerceAtLeast(1)).forEach { r ->
+                c.drawRoundRect(RectF(lx, ly - 6.5f, lx + 6.5f, ly), 1.5f, 1.5f, fill(r.accent.toArgb()))
+                c.drawText(ellipsize(r.name, text(7.6f), rt.right - lx - 46f), lx + 10f, ly, text(7.6f, INK))
+                c.drawText("${com.hematcount.app.model.Calculations.fmt1(r.percent ?: 0.0)}%", rt.right - 8f, ly, text(7.6f, INK, BOLD, Paint.Align.RIGHT))
+                ly += 12.4f
+            }
+        }
+        s.y = top + boxH + 18f
     }
 
     private fun drawFlag(c: Canvas, flag: Flag, cx: Float, cy: Float) {

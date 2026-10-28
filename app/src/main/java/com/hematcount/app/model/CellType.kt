@@ -10,9 +10,9 @@ import androidx.compose.ui.graphics.Color
  * Table 2.1. Absolute counts are expressed as ×10³/µL (identical to ×10⁹/L).
  */
 enum class CellType(
-    val displayName: String,
-    val group: String,
-    val accent: Color,
+    override val displayName: String,
+    override val group: String,
+    override val accent: Color,
     val countsInWbc: Boolean,
     val refPercent: String,
     val refPercentLow: Double?,
@@ -20,8 +20,8 @@ enum class CellType(
     val refAbsolute: String,
     val refAbsLow: Double?,
     val refAbsHigh: Double?,
-    val reference: MorphologyReference,
-) {
+    override val reference: MorphologyReference,
+) : CountItem {
     NEUTROPHIL(
         displayName = "Neutrophils",
         group = "Segmented · Mature granulocyte",
@@ -214,6 +214,12 @@ enum class CellType(
             decreasedIn = "Not normally present in adult peripheral blood. Reported per 100 leucocytes and used to correct the total leucocyte count.",
         ),
     );
+
+    override val id: String get() = name
+    override val countsInTotal: Boolean get() = countsInWbc
+    override val drawId: String get() = name
+    override val normalText: String get() =
+        if (countsInWbc) "$refPercent %" + (if (refAbsolute != "—") " · $refAbsolute ×10³/µL" else "") else refPercent
 
     companion object {
         val keypadOrder: List<CellType> = listOf(

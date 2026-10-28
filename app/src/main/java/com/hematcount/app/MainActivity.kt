@@ -32,6 +32,15 @@ import com.hematcount.app.ui.theme.HematCountTheme
 enum class Screen { COUNTER, RESULTS, HISTORY, SETTINGS, ABOUT }
 
 class MainActivity : ComponentActivity() {
+    /** Set by the counter screen to receive USB / Bluetooth keyboard presses. */
+    var keyHandler: ((android.view.KeyEvent) -> Boolean)? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            keyHandler?.invoke(event) == true) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

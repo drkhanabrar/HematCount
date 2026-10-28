@@ -39,6 +39,9 @@ data class ReportData(
     val aiProvider: String = "",
     /** true = aiText holds only the further-investigation suggestions. */
     val aiInvestigationsOnly: Boolean = false,
+    /** Non-blood modes (marrow, fluid, reticulocytes…). Null = peripheral blood differential. */
+    val modeReport: com.hematcount.app.model.ModeReport? = null,
+    val patientPhone: String = "",
 ) {
     val reportNo: String get() =
         "HC-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(date)
@@ -51,6 +54,7 @@ data class ReportData(
 
     /** Automatically generated alerts for the report and results screen. */
     val alerts: List<String> get() {
+        modeReport?.let { return it.alerts }
         val r = results
         val out = mutableListOf<String>()
         if (r.wbcCounted == 0) return out
@@ -92,7 +96,27 @@ data class ReportData(
             aiProvider = r.aiProviderUsed,
             aiInvestigationsOnly = r.aiPdfMode == com.hematcount.app.ai.AiPdfMode.INVESTIGATIONS &&
                 com.hematcount.app.ai.extractInvestigations(r.aiResult).isNotBlank(),
+            modeReport = recordModeReport(r),
+            patientPhone = r.phone,
         )
+
+        /** Rebuilds the mode-specific results of a saved record. */
+        fun recordModeReport(r: com.hematcount.app.history.ReportRecord): com.hematcount.app.model.ModeReport? {
+            val calc = com.hematcount.app.model.ModeCalc
+            fun c(k: String) = r.tallyCounts[k] ?: emptyMap()
+            val i = r.modeInputs
+            return when (r.mode) {
+                com.hematcount.app.model.CounterMode.BLOOD -> null
+                com.hematcount.app.model.CounterMode.MARROW -> calc.marrow(c("MARROW"), i, r.target)
+                com.hematcount.app.model.CounterMode.FLUID -> calc.fluid(c("FLUID_CHAMBER"), c("FLUID_DIFF"), i, 0)
+                com.hematcount.app.model.CounterMode.RETIC -> calc.retic(c("RETIC"), i, 0)
+                com.hematcount.app.model.CounterMode.RBC_MORPH -> calc.rbcMorph(c("RBC_MORPH"), 0)
+                com.hematcount.app.model.CounterMode.PLATELET -> calc.platelet(c("PLATELET"), i)
+                com.hematcount.app.model.CounterMode.VIABILITY -> calc.viability(c("VIABILITY"), i)
+                com.hematcount.app.model.CounterMode.CUSTOM -> calc.custom(
+                    com.hematcount.app.decodeCustom(r.customJson.ifBlank { null }) ?: emptyList(), c("CUSTOM"), i, 0)
+            }
+        }
 
         fun from(vm: CounterViewModel) = ReportData(
             institution = vm.institution.trim(),
@@ -120,14 +144,54 @@ data class ReportData(
             aiProvider = vm.aiProviderUsed,
             aiInvestigationsOnly = vm.aiPdfMode == com.hematcount.app.ai.AiPdfMode.INVESTIGATIONS &&
                 com.hematcount.app.ai.extractInvestigations(vm.aiResult).isNotBlank(),
+            modeReport = vm.modeReport(),
+            patientPhone = vm.patientPhone,
         )
     }
 }
 
 /** Plain-text summary for clipboard, LIS entry and WhatsApp messages. */
 object ReportText {
+    /** Text summary for marrow, fluid, reticulocyte, red-cell, platelet, viability and custom counts. */
+    fun generic(d: ReportData, m: com.hematcount.app.model.ModeReport, forAi: Boolean): String = buildString {
+        if (forAi) {
+            appendLine("Specimen / test: ${m.title} (${m.specimen})")
+            appendLine("Age: ${d.age.ifBlank { "not stated" }}; Sex: ${d.sex.ifBlank { "not stated" }}")
+        } else {
+            appendLine("HEMATCOUNT — ${m.title.uppercase()}")
+            if (d.institution.isNotBlank()) appendLine(d.institution)
+            appendLine("Report No: ${d.reportNo}   Date: ${d.dateText}")
+            if (d.sampleId.isNotBlank()) appendLine("Sample ID: ${d.sampleId}")
+            if (d.patientName.isNotBlank()) appendLine("Patient: ${d.patientName}" +
+                listOf(d.age, d.sex).filter { it.isNotBlank() }.joinToString(" / ").let { if (it.isBlank()) "" else " ($it)" })
+            if (d.referredBy.isNotBlank()) appendLine("Referred by: ${d.referredBy}")
+            appendLine("Specimen: ${m.specimen}")
+        }
+        m.setup.filter { it.second != "—" }.forEach { appendLine("${it.first}: ${it.second}") }
+        appendLine()
+        appendLine("${m.totalLabel}: ${m.total}")
+        fun rowLine(r: com.hematcount.app.model.ReportRow) = buildString {
+            append("• ${r.name}: ${r.count}")
+            r.percent?.let { append(" · ${fmt1(it)}%") }
+            r.extra?.let { append(" · $it") }
+            if (r.normal.isNotBlank()) append("  [normal ${r.normal}]")
+            if (r.flag != Flag.NONE) append("  ${r.flag.label}")
+        }
+        m.rows.forEach { appendLine(rowLine(it)) }
+        if (m.rows2.isNotEmpty()) {
+            appendLine(); appendLine(m.rows2Title ?: "Differential")
+            m.rows2.forEach { appendLine(rowLine(it)) }
+        }
+        appendLine()
+        m.indices.forEach { appendLine("${it.label}: ${it.value}" + (if (it.flag != Flag.NONE) "  ${it.flag.label}" else "")) }
+        if (m.alerts.isNotEmpty()) { appendLine(); appendLine("Alerts:"); m.alerts.forEach { appendLine("• $it") } }
+        if (d.remarks.isNotBlank()) { appendLine(); appendLine((if (forAi) "Reporter's remarks: " else "Impression: ") + d.remarks) }
+        if (!forAi && d.reportedBy.isNotBlank()) { appendLine(); appendLine("Reported by: ${d.reportedBy}") }
+    }.trimEnd()
+
     /** De-identified version for AI analysis: no name, sample ID, clinician or ward. */
     fun buildForAi(d: ReportData): String = buildString {
+        d.modeReport?.let { return generic(d, it, forAi = true) }
         val r = d.results
         appendLine("Age: ${d.age.ifBlank { "not stated" }}; Sex: ${d.sex.ifBlank { "not stated" }}")
         appendLine("Leucocytes counted: ${r.wbcCounted}")
@@ -147,6 +211,7 @@ object ReportText {
     }.trimEnd()
 
     fun build(d: ReportData): String = buildString {
+        d.modeReport?.let { return generic(d, it, forAi = false) }
         val r = d.results
         appendLine("HEMATCOUNT — MANUAL DIFFERENTIAL LEUCOCYTE COUNT")
         if (d.institution.isNotBlank()) appendLine(d.institution)
