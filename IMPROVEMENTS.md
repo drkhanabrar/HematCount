@@ -2,7 +2,7 @@
 
 Work happens on the `dev` branch. **No new version is released until Dr. Imran Khan approves**; a release is created only when `dev` is merged into `main`.
 
-Status: ✅ done on `dev` · 🔄 in progress · 📝 planned / suggested
+Status: ✅ done · 🔄 in progress · 📝 planned / suggested
 
 ---
 
@@ -10,33 +10,33 @@ Status: ✅ done on `dev` · 🔄 in progress · 📝 planned / suggested
 
 | # | Item | Status |
 |---|---|---|
-| R1 | **Bone marrow counter** (myelogram) — marrow differential, M:E ratio, normal ranges, marrow PDF report | ✅ (dev) |
-| R2 | **CSF counter** — Neubauer chamber cell count + differential | ✅ (dev) |
-| R3 | **Body fluid counter with Neubauer chamber** — pleural, peritoneal (ascitic), pericardial, synovial; blood WBC / RBC / platelet manual counts | ✅ (dev) |
-| R4 | **Undo feedback** — instead of a floating notification, briefly flash the counter cell that was undone | ✅ (dev) |
+| R1 | **Bone marrow counter** (myelogram) — marrow differential, M:E ratio, normal ranges, marrow PDF report | ✅ |
+| R2 | **CSF counter** — Neubauer chamber cell count + differential | ✅ |
+| R3 | **Body fluid counter with Neubauer chamber** — pleural, peritoneal (ascitic), pericardial, synovial; blood WBC / RBC / platelet manual counts | ✅ |
+| R4 | **Undo feedback** — instead of a floating notification, briefly flash the counter cell that was undone | ✅ |
 | R5 | Hold all releases until approval (work on `dev` branch only) | ✅ |
-| R6 | Feature parity with the "Cell Counter" app (MSM-DEV, Google Play) — see below | ✅ (dev) |
+| R6 | Feature parity with the "Cell Counter" app (MSM-DEV, Google Play) — see below | ✅ |
 
 ### R6 — features adopted from the reference app (ideas only; no text, icons or branding copied)
 
 | Reference-app feature | HematCount implementation | Status |
 |---|---|---|
 | Differential WBC count | Peripheral blood mode (existing) | ✅ |
-| Bone marrow count | Bone marrow mode (R1) | ✅ (dev) |
-| Neubauer chamber count | CSF & body-fluid mode with interactive chamber grid (R2, R3) | ✅ (dev) |
-| Reticulocyte count | Reticulocyte mode: %, absolute count, corrected %, reticulocyte production index; optional Miller-disc method | ✅ (dev) |
-| RBC abnormalities count | Red cell morphology mode: % of each poikilocyte per red cells counted; schistocyte flag | ✅ (dev) |
-| Platelet count | Platelet estimate mode: platelets per oil-immersion field × factor; clump flag | ✅ (dev) |
-| Viability count | Cell viability mode (trypan blue): % viability, viable cells/mL | ✅ (dev) |
-| Counters with user-defined names and icons | Custom counter mode: add / rename / reorder keys, choose icon and colour | ✅ (dev) |
-| Concentration and percentage calculations | All modes | ✅ (dev) |
+| Bone marrow count | Bone marrow mode (R1) | ✅ |
+| Neubauer chamber count | CSF & body-fluid mode with interactive chamber grid (R2, R3) | ✅ |
+| Reticulocyte count | Reticulocyte mode: %, absolute count, corrected %, reticulocyte production index; optional Miller-disc method | ✅ |
+| RBC abnormalities count | Red cell morphology mode: % of each poikilocyte per red cells counted; schistocyte flag | ✅ |
+| Platelet count | Platelet estimate mode: platelets per oil-immersion field × factor; clump flag | ✅ |
+| Viability count | Cell viability mode (trypan blue): % viability, viable cells/mL | ✅ |
+| Counters with user-defined names and icons | Custom counter mode: add / rename / reorder keys, choose icon and colour | ✅ |
+| Concentration and percentage calculations | All modes | ✅ |
 | Automatic saving | All modes | ✅ |
-| Alert at maximum count | Target lock in all modes | ✅ (dev) |
-| WBC morphology information | Long-press reference cards (extended to marrow and fluid cells) | ✅ (dev) |
-| Physical keyboard support | USB / Bluetooth keyboard & numeric keypad: keys 1–9, 0 and letters map to keypad positions; Backspace = undo | ✅ (dev) |
+| Alert at maximum count | Target lock in all modes | ✅ |
+| WBC morphology information | Long-press reference cards (extended to marrow and fluid cells) | ✅ |
+| Physical keyboard support | USB / Bluetooth keyboard & numeric keypad: keys 1–9, 0 and letters map to keypad positions; Backspace = undo | ✅ |
 | Sound + vibration, dark mode, landscape, sharing | Existing | ✅ |
 
-## Implementation notes (dev branch)
+## Implementation notes (released in v1.0.9+)
 
 - **Modes**: Peripheral blood · Bone marrow · CSF & body fluids · Reticulocytes · RBC morphology · Platelets · Viability · Custom — switch with the chips under the title bar; each mode keeps its own counts, target and undo history.
 - **Bone marrow**: 17-cell myelogram (default target 500) + megakaryocytes tallied separately; M:E ratio, lineage %, blast and plasma-cell alerts (WHO 5th ed. thresholds), ICSH 500-cell reminder; findings sheet for site, particles, cellularity, megakaryocytes, Perls iron. Normal ranges: Wintrobe's normal adult marrow differential.
