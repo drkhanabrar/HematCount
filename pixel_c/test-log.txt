@@ -1,12 +1,40 @@
-onError: commandError=true message=INSTRUMENTATION_FAILED: com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner
-android.util.AndroidException: INSTRUMENTATION_FAILED: com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner
-INSTRUMENTATION_STATUS: Error=Unable to find instrumentation info for: ComponentInfo{com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner}
-INSTRUMENTATION_STATUS: id=ActivityManagerService
-INSTRUMENTATION_STATUS_CODE: -1
-	at com.android.commands.am.Instrument.run(Instrument.java:535)
-	at com.android.commands.am.Am.runInstrument(Am.java:208)
-	at com.android.commands.am.Am.onRun(Am.java:85)
-	at com.android.internal.os.BaseCommand.run(BaseCommand.java:62)
-	at com.android.commands.am.Am.main(Am.java:54)
-	at com.android.internal.os.RuntimeInit.nativeFinishInit(Native Method)
-	at com.android.internal.os.RuntimeInit.main(RuntimeInit.java:359)
+INSTRUMENTATION_STATUS: class=com.hematcount.app.VisualQaTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+com.hematcount.app.VisualQaTest:
+INSTRUMENTATION_STATUS: test=darkTheme
+INSTRUMENTATION_STATUS_CODE: 1
+s_glBindAttribLocation: bind attrib 0 name position
+s_glBindAttribLocation: bind attrib 1 name color
+s_glBindAttribLocation: bind attrib 2 name localCoord
+INSTRUMENTATION_STATUS: class=com.hematcount.app.VisualQaTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=darkTheme
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.hematcount.app.VisualQaTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=lightTheme
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.hematcount.app.VisualQaTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=2
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=lightTheme
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_RESULT: stream=
+
+Time: 189.496
+
+OK (2 tests)
+
+
+INSTRUMENTATION_CODE: -1
