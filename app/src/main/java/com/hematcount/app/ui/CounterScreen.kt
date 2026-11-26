@@ -630,10 +630,11 @@ fun SectionedKeypad(
         val headers = if (titled) sections.size else 0
         val needed = minRow * rows + spacing * (rows + headers - 1) + headerH * headers
         val scroll = maxHeight < needed
+        val showSubtitles = maxWidth >= 560.dp
         val colMod = if (scroll) Modifier.fillMaxWidth().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize()
         Column(colMod, verticalArrangement = Arrangement.spacedBy(spacing)) {
             sections.forEach { sec ->
-                if (titled && sec.title != null) SectionHeader(sec, sectionInfo(sec), maxWidth >= 560.dp, Modifier.fillMaxWidth().height(headerH))
+                if (titled && sec.title != null) SectionHeader(sec, sectionInfo(sec), showSubtitles, Modifier.fillMaxWidth().height(headerH))
                 sec.items.chunked(columns).forEach { row ->
                     val rm = if (scroll) Modifier.fillMaxWidth().height(minRow) else Modifier.fillMaxWidth().weight(1f)
                     Row(rm, horizontalArrangement = Arrangement.spacedBy(spacing)) {
