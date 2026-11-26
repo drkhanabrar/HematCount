@@ -22,6 +22,8 @@ data class CountResults(
     val correctionApplied: Boolean,
     /** WBC used for absolute counts (corrected if correction applied). */
     val effectiveWbc: Double?,
+    /** Rows to display: those on the current keypad plus any counted. */
+    val shown: List<RowResult> = rows,
 )
 
 object Calculations {
@@ -36,6 +38,8 @@ object Calculations {
         counts: Map<CellType, Int>,
         wbcText: String,
         applyCorrection: Boolean,
+        /** Keys on the current keypad (simple / extended); null = all. */
+        keypad: List<CellType>? = null,
     ): CountResults {
         val wbcCounted = CellType.wbcTypes.sumOf { counts[it] ?: 0 }
         val nrbc = counts[CellType.NRBC] ?: 0
@@ -54,8 +58,9 @@ object Calculations {
             val abs = effective?.let { it * pct / 100.0 }
             RowResult(cell, c, pct, abs, flagFor(cell, c, pct, abs, wbcCounted))
         }
+        val shown = if (keypad == null) rows else rows.filter { it.cell in keypad || it.count > 0 }
         return CountResults(
-            wbcCounted, nrbc, nrbcPer100, rows, analyser, corrected, correctionApplied, effective
+            wbcCounted, nrbc, nrbcPer100, rows, analyser, corrected, correctionApplied, effective, shown
         )
     }
 

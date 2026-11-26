@@ -27,6 +27,8 @@ import com.hematcount.app.model.Calculations
 import com.hematcount.app.model.CountItem
 import com.hematcount.app.model.CounterMode
 import com.hematcount.app.model.FluidItems
+import com.hematcount.app.model.KeypadSection
+import com.hematcount.app.model.Layouts
 import com.hematcount.app.model.FluidPreset
 import com.hematcount.app.model.MarrowCell
 import com.hematcount.app.model.ModeCalc
@@ -180,36 +182,70 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
 
     fun activeTally(): Tally? = activeTallyKey()?.let { tallies[it] }
 
+    // ---- simple / extended keypads
+    fun isExtended(m: CounterMode = mode): Boolean = Layouts.isExtended(m, inputs)
+    fun setExtended(m: CounterMode, extended: Boolean) {
+        inputs[Layouts.key(m)] = if (extended) "extended" else "simple"
+        save()
+    }
+
+    /** Keypad sections for a mode (bone marrow is grouped by progeny; others have one untitled section). */
+    fun sectionsFor(m: CounterMode, stage: Int = fluidStage): List<KeypadSection> =
+        if (m == CounterMode.MARROW) MarrowCell.sections(isExtended(m))
+        else listOf(KeypadSection(null, null, androidx.compose.ui.graphics.Color.Unspecified, itemsFor(m, stage)))
+
+    fun activeSections(): List<KeypadSection> = sectionsFor(mode)
+
+    /** Keys shown on the keypad (respects simple / extended). */
     fun itemsFor(m: CounterMode, stage: Int = fluidStage): List<CountItem> = when (m) {
-        CounterMode.BLOOD -> CellType.keypadOrder
-        CounterMode.MARROW -> MarrowCell.keypadOrder
-        CounterMode.FLUID -> if (stage == 1 && fluidPreset.hasDifferential) FluidItems.differentialItems(fluidPreset)
+        CounterMode.BLOOD -> Layouts.bloodItems(isExtended(m))
+        CounterMode.MARROW -> MarrowCell.sections(isExtended(m)).flatMap { it.items }
+        CounterMode.FLUID -> if (stage == 1 && fluidPreset.hasDifferential) Layouts.fluidDiff(fluidPreset, isExtended(m))
             else FluidItems.chamberItems(fluidPreset)
         CounterMode.RETIC -> RetItems.items(inputs["rt.miller"] == "1")
-        CounterMode.RBC_MORPH -> RbcItems.items
-        CounterMode.PLATELET -> PlateletItems.items
+        CounterMode.RBC_MORPH -> Layouts.rbcItems(isExtended(m))
+        CounterMode.PLATELET -> Layouts.plateletItems(isExtended(m))
         CounterMode.VIABILITY -> ViabilityItems.items
         CounterMode.CUSTOM -> customItems.toList()
     }
 
+    /** Every key a mode can count — totals and targets use these so switching layouts never loses counts. */
+    fun allItemsFor(m: CounterMode, stage: Int = fluidStage): List<CountItem> = when (m) {
+        CounterMode.BLOOD -> CellType.keypadOrder
+        CounterMode.MARROW -> MarrowCell.entries.toList()
+        CounterMode.FLUID -> if (stage == 1 && fluidPreset.hasDifferential) FluidItems.differentialItems(fluidPreset)
+            else FluidItems.chamberItems(fluidPreset)
+        CounterMode.RBC_MORPH -> RbcItems.items
+        CounterMode.PLATELET -> PlateletItems.items
+        else -> itemsFor(m, stage)
+    }
+
     fun activeItems(): List<CountItem> = itemsFor(mode)
+    private fun allActive(): List<CountItem> = allItemsFor(mode)
+
+    /** Cells counted so far in a mode (shown in the side panel). */
+    fun modeTotal(m: CounterMode): Int = when (m) {
+        CounterMode.BLOOD -> wbcCounted
+        CounterMode.FLUID -> tallies.getValue("FLUID_CHAMBER").counts.values.sum() + tallies.getValue("FLUID_DIFF").counts.values.sum()
+        else -> tallies.getValue(m.name).let { t -> t.total(allItemsFor(m)) }
+    }
 
     fun countOf(item: CountItem): Int =
         if (item is CellType) counts[item] ?: 0 else activeTally()?.count(item.id) ?: 0
 
-    val currentTotal: Int get() = activeTally()?.total(activeItems()) ?: wbcCounted
+    val currentTotal: Int get() = activeTally()?.total(allActive()) ?: wbcCounted
     val currentTarget: Int get() = activeTally()?.target ?: target
     val currentLocked: Boolean get() = activeTally()?.locked ?: locked
     val currentCanUndo: Boolean get() = activeTally()?.canUndo ?: canUndo
 
     fun setCurrentTarget(t: Int) {
         val tl = activeTally()
-        if (tl == null) setTargetValue(t) else { tl.setTarget(t, activeItems()); save() }
+        if (tl == null) setTargetValue(t) else { tl.setTarget(t, allActive()); save() }
     }
 
     fun continueCurrent(next: Int) {
         val tl = activeTally()
-        if (tl == null) continueCounting(next) else { tl.setTarget(next, activeItems()); showTargetDialog = false; save() }
+        if (tl == null) continueCounting(next) else { tl.setTarget(next, allActive()); showTargetDialog = false; save() }
     }
 
     private fun flash(id: String) { flashId = id; flashTick = System.nanoTime() }
@@ -222,7 +258,7 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     fun press(item: CountItem, fromKeyboard: Boolean = false): TapResult {
         val result = if (item is CellType) tap(item) else {
             val tl = activeTally() ?: return TapResult.NOTHING_TO_REMOVE
-            tl.tap(item, activeItems(), correctionMode).also {
+            tl.tap(item, allActive(), correctionMode).also {
                 if (it == TapResult.TARGET_REACHED) showTargetDialog = true
                 save()
             }
@@ -241,7 +277,7 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     /** Undo the last change in the current mode and flash that counter. */
     fun undoActive() {
         val tl = activeTally()
-        val id = if (tl == null) undo()?.name else tl.undo(activeItems()).also { save() }
+        val id = if (tl == null) undo()?.name else tl.undo(allActive()).also { save() }
         if (id != null) { feedback.correction(hapticsOn, false); flash(id) }
     }
 
@@ -261,7 +297,7 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
             CounterMode.MARROW -> ModeCalc.marrow(c("MARROW"), inputs.toMap(), t("MARROW"))
             CounterMode.FLUID -> ModeCalc.fluid(c("FLUID_CHAMBER"), c("FLUID_DIFF"), inputs.toMap(), t("FLUID_DIFF"))
             CounterMode.RETIC -> ModeCalc.retic(c("RETIC"), inputs.toMap(), t("RETIC"))
-            CounterMode.RBC_MORPH -> ModeCalc.rbcMorph(c("RBC_MORPH"), t("RBC_MORPH"))
+            CounterMode.RBC_MORPH -> ModeCalc.rbcMorph(c("RBC_MORPH"), t("RBC_MORPH"), inputs.toMap())
             CounterMode.PLATELET -> ModeCalc.platelet(c("PLATELET"), inputs.toMap())
             CounterMode.VIABILITY -> ModeCalc.viability(c("VIABILITY"), inputs.toMap())
             CounterMode.CUSTOM -> ModeCalc.custom(customItems.toList(), c("CUSTOM"), inputs.toMap(), t("CUSTOM"))
@@ -486,7 +522,8 @@ class CounterViewModel(app: Application) : AndroidViewModel(app) {
     val nrbcCount: Int get() = counts[CellType.NRBC] ?: 0
     val canUndo: Boolean get() = undoStack.isNotEmpty()
 
-    fun results(): CountResults = Calculations.compute(counts, wbcText, applyNrbcCorrection)
+    fun results(): CountResults = Calculations.compute(counts, wbcText, applyNrbcCorrection,
+        com.hematcount.app.model.Layouts.bloodItems(isExtended(CounterMode.BLOOD)))
 
     fun tap(cell: CellType): TapResult {
         if (correctionMode) {

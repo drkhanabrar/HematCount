@@ -1,6 +1,7 @@
 package com.hematcount.app.ui
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -47,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.BarChart
@@ -58,6 +60,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Settings
@@ -69,6 +72,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -78,6 +82,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -91,6 +99,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -130,16 +139,15 @@ import com.hematcount.app.model.CellType
 import com.hematcount.app.model.CountItem
 import com.hematcount.app.model.CounterMode
 import com.hematcount.app.model.Flag
+import com.hematcount.app.model.FluidPreset
+import com.hematcount.app.model.KeypadSection
+import com.hematcount.app.model.Layouts
+import com.hematcount.app.model.MarrowCell
 import com.hematcount.app.model.Neubauer
 import com.hematcount.app.targetLabel
 import com.hematcount.app.ui.theme.CounterNumberStyle
 import com.hematcount.app.ui.theme.LocalClinicalColors
 import kotlinx.coroutines.launch
-
-/** Accent colour adjusted for the current theme (lighter on dark backgrounds). */
-@Composable
-fun CountItem.uiAccent(): Color =
-    if (LocalClinicalColors.current.isDark) lerp(accent, Color.White, 0.22f) else accent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,16 +161,15 @@ fun CounterScreen(
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
 
     var referenceFor by remember { mutableStateOf<CountItem?>(null) }
     var showSetup by rememberSaveable { mutableStateOf(false) }
     var showNewSample by remember { mutableStateOf(false) }
     var showPatient by remember { mutableStateOf(false) }
     var showKeyboardHelp by remember { mutableStateOf(false) }
-    var donutMode by rememberSaveable { mutableStateOf(true) }
 
     val mode = vm.mode
-    val items = vm.activeItems()
 
     fun message(text: String, action: String? = null, onAction: () -> Unit = {}) {
         scope.launch {
@@ -173,139 +180,177 @@ fun CounterScreen(
         }
     }
 
-    // Messages raised by the view model (also from hardware-keyboard presses)
     LaunchedEffect(vm.messageTick) {
         val t = vm.messageText ?: return@LaunchedEffect
         message(t, vm.messageAction) { vm.continueCurrent(nextTarget(vm.currentTarget)) }
     }
 
-    // Physical keyboard: active only while no dialog or sheet is open
-    val dialogsOpen = referenceFor != null || showSetup || showNewSample || showPatient || vm.showTargetDialog || showKeyboardHelp
+    // Physical keyboard: active only while no dialog, sheet or drawer is open
+    val dialogsOpen = referenceFor != null || showSetup || showNewSample || showPatient || vm.showTargetDialog ||
+        showKeyboardHelp || drawerState.isOpen
     DisposableEffect(dialogsOpen) {
         val act = context as? MainActivity
         if (!dialogsOpen) act?.keyHandler = { e -> handleHardwareKey(vm, e) }
         onDispose { act?.keyHandler = null }
     }
+    BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 84.dp)) },
-        topBar = {
-            Column {
+    fun closeThen(action: () -> Unit) { scope.launch { drawerState.close() }; action() }
+    val drawer: @Composable () -> Unit = {
+        AppDrawerContent(
+            vm = vm,
+            onSelectMode = { m -> closeThen { vm.switchMode(m) } },
+            onSample = { closeThen { showPatient = true } },
+            onHistory = { closeThen(onOpenHistory) },
+            onKeyboard = { closeThen { showKeyboardHelp = true } },
+            onSettings = { closeThen(onOpenSettings) },
+            onAbout = { closeThen(onOpenAbout) },
+        )
+    }
+
+    val content: @Composable (Boolean) -> Unit = { showMenu ->
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 84.dp)) },
+            topBar = {
                 TopAppBar(
+                    navigationIcon = {
+                        if (showMenu) IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open counters panel")
+                        }
+                    },
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center,
-                            ) { CellIllustration(CellType.NEUTROPHIL, Modifier.size(28.dp)) }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text("HematCount", style = MaterialTheme.typography.titleLarge, maxLines = 1)
-                                Text(mode.label, style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                        Column {
+                            Text(mode.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                if (Layouts.supports(mode)) (if (vm.isExtended()) "Extended keypad" else "Simple keypad") else mode.blurb(),
+                                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     },
                     actions = {
                         TargetSelector(vm.currentTarget) { vm.setCurrentTarget(it) }
                         IconButton(onClick = { showNewSample = true }) { Icon(Icons.Filled.RestartAlt, contentDescription = "New sample") }
-                        Box {
-                            var menu by remember { mutableStateOf(false) }
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false },
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                                DropdownMenuItem(text = { Text("History & backup") }, leadingIcon = { Icon(Icons.Filled.History, null) },
-                                    onClick = { menu = false; onOpenHistory() })
-                                DropdownMenuItem(text = { Text("Sample details") }, leadingIcon = { Icon(Icons.Filled.Badge, null) },
-                                    onClick = { menu = false; showPatient = true })
-                                DropdownMenuItem(text = { Text("Keyboard shortcuts") }, leadingIcon = { Icon(Icons.Filled.Keyboard, null) },
-                                    onClick = { menu = false; showKeyboardHelp = true })
-                                DropdownMenuItem(text = { Text("Settings") }, leadingIcon = { Icon(Icons.Filled.Settings, null) },
-                                    onClick = { menu = false; onOpenSettings() })
-                                DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(Icons.Filled.Info, null) },
-                                    onClick = { menu = false; onOpenAbout() })
-                            }
-                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                         titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                         actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     ),
                 )
-                ModeChips(mode) { vm.switchMode(it) }
-            }
-        },
-    ) { inner ->
-        BoxWithConstraints(Modifier.fillMaxSize().padding(inner)) {
-            val landscape = maxWidth > maxHeight
-            val tablet = minOf(maxWidth, maxHeight) >= 600.dp
-            val gutter = if (tablet) 20.dp else 12.dp
+            },
+        ) { inner ->
+            BoxWithConstraints(Modifier.fillMaxSize().padding(inner)) {
+                val landscape = maxWidth > maxHeight
+                val tablet = minOf(maxWidth, maxHeight) >= 600.dp
+                val gutter = if (tablet) 20.dp else 12.dp
+                val chamberStage = mode == CounterMode.FLUID && (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential)
 
-            val summary: @Composable (Modifier) -> Unit = { m ->
-                SummaryPanel(
-                    vm = vm, items = items, donutMode = donutMode, onToggleChart = { donutMode = !donutMode },
-                    onEditSample = { showPatient = true },
-                    onContinue = { vm.continueCurrent(nextTarget(vm.currentTarget)) },
-                    large = tablet, modifier = m,
-                )
-            }
-            val keypad: @Composable (Modifier) -> Unit = { m ->
-                Column(m) {
-                    val cols = keypadColumns(items.size, landscape || tablet)
-                    val rep = vm.modeReport()
-                    val subOverride: (CountItem) -> String? = { item ->
-                        when {
-                            mode == CounterMode.FLUID && (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential) ->
-                                rep?.rows?.firstOrNull { it.name == item.displayName }?.extra
-                            mode == CounterMode.PLATELET && item.countsInTotal ->
-                                rep?.rows?.firstOrNull()?.extra ?: "per field"
-                            else -> null
+                val summary: @Composable (Modifier) -> Unit = { m ->
+                    SummaryPanel(
+                        vm = vm, onEditSample = { showPatient = true }, onMoreSetup = { showSetup = true },
+                        onContinue = { vm.continueCurrent(nextTarget(vm.currentTarget)) },
+                        large = tablet, modifier = m,
+                    )
+                }
+                val keypad: @Composable (Modifier) -> Unit = { m ->
+                    Column(m) {
+                        val sections = vm.activeSections()
+                        val items = sections.flatMap { it.items }
+                        val rep = vm.modeReport()
+                        val total = vm.currentTotal
+                        val wide = landscape || tablet
+                        val cols = if (mode == CounterMode.MARROW) (if (wide) 4 else 3) else keypadColumns(items.size, wide)
+                        val subFor: (CountItem) -> String = { item ->
+                            val n = vm.countOf(item)
+                            when {
+                                vm.correctionMode -> "tap −1"
+                                chamberStage -> rep?.rows?.firstOrNull { it.name == item.displayName }?.extra ?: "—"
+                                mode == CounterMode.PLATELET && item.countsInTotal -> rep?.rows?.firstOrNull()?.extra ?: "per field"
+                                !item.countsInTotal && mode == CounterMode.BLOOD -> if (total > 0) "${fmt1(n * 100.0 / total)}/100" else "0/100"
+                                !item.countsInTotal -> "tally"
+                                else -> if (total > 0) "${fmt1(n * 100.0 / total)}%" else "0%"
+                            }
                         }
+                        val sectionInfo: (KeypadSection) -> String? = { sec ->
+                            sec.title?.let { title ->
+                                val members = if (mode == CounterMode.MARROW) MarrowCell.entries.filter { MarrowCell.sectionOf(it) == title } else sec.items
+                                val counted = members.filter { it.countsInTotal }.sumOf { vm.countOf(it) }
+                                val separate = members.filter { !it.countsInTotal }.sumOf { vm.countOf(it) }
+                                if (members.none { it.countsInTotal }) "$separate tallied"
+                                else "$counted · ${if (total > 0) fmt1(counted * 100.0 / total) else "0"}%"
+                            }
+                        }
+                        SectionedKeypad(
+                            sections = sections, columns = cols, minRow = if (tablet) 88.dp else 66.dp,
+                            spacing = if (tablet) 10.dp else 8.dp, sectionInfo = sectionInfo,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        ) { item, mod ->
+                            CountKey(
+                                item = item, count = vm.countOf(item), sub = subFor(item),
+                                correction = vm.correctionMode, locked = vm.currentLocked && !vm.correctionMode, large = tablet,
+                                flash = vm.flashId == item.id, flashTick = vm.flashTick,
+                                onTap = { vm.press(item) }, onLongPress = { referenceFor = item }, modifier = mod,
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        ActionBar(
+                            canUndo = vm.currentCanUndo,
+                            correction = vm.correctionMode,
+                            onUndo = { vm.undoActive() },
+                            onToggleCorrection = { vm.correctionMode = !vm.correctionMode; snackbar.currentSnackbarData?.dismiss() },
+                            setupLabel = setupLabel(mode),
+                            setupIcon = when (mode) {
+                                CounterMode.BLOOD -> Icons.Outlined.Bloodtype
+                                CounterMode.CUSTOM -> Icons.Filled.Edit
+                                else -> Icons.Filled.Tune
+                            },
+                            onSetup = { showSetup = true },
+                            onResults = onOpenResults,
+                        )
                     }
-                    CountKeypad(
-                        items = items, columns = cols, countOf = { vm.countOf(it) }, total = vm.currentTotal, subOverride = subOverride,
-                        nrbcStyle = mode == CounterMode.BLOOD, correction = vm.correctionMode,
-                        locked = vm.currentLocked && !vm.correctionMode, large = tablet,
-                        flashId = vm.flashId, flashTick = vm.flashTick,
-                        onTap = { vm.press(it) }, onLongPress = { referenceFor = it },
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    ActionBar(
-                        canUndo = vm.currentCanUndo,
-                        correction = vm.correctionMode,
-                        onUndo = { vm.undoActive() },
-                        onToggleCorrection = { vm.correctionMode = !vm.correctionMode; snackbar.currentSnackbarData?.dismiss() },
-                        setupLabel = setupLabel(mode),
-                        setupIcon = if (mode == CounterMode.BLOOD) Icons.Outlined.Bloodtype else if (mode == CounterMode.CUSTOM) Icons.Filled.Edit else Icons.Filled.Tune,
-                        onSetup = { showSetup = true },
-                        onResults = onOpenResults,
-                    )
                 }
-            }
-            val summaryWeight = when (mode) {
-                CounterMode.BLOOD -> 0.35f
-                CounterMode.FLUID -> if (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential) 0.52f else 0.42f
-                CounterMode.MARROW -> 0.34f
-                else -> if (items.size <= 4) 0.42f else 0.35f
-            }
+                val summaryWeight = when {
+                    chamberStage -> if (tablet) 0.5f else 0.56f
+                    mode == CounterMode.FLUID -> 0.4f
+                    mode == CounterMode.MARROW -> if (tablet) 0.3f else 0.27f
+                    vm.activeItems().size <= 4 -> 0.42f
+                    else -> 0.34f
+                }
 
-            if (landscape) {
-                Row(Modifier.fillMaxSize().padding(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(gutter)) {
-                    summary(Modifier.weight(0.4f).fillMaxHeight())
-                    keypad(Modifier.weight(0.6f).fillMaxHeight())
-                }
-            } else {
-                Column(Modifier.fillMaxSize().padding(horizontal = gutter).padding(bottom = 8.dp)) {
-                    summary(Modifier.weight(summaryWeight).fillMaxWidth())
-                    Spacer(Modifier.height(10.dp))
-                    keypad(Modifier.weight(1f - summaryWeight).fillMaxWidth())
+                if (landscape) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(gutter)) {
+                        summary(Modifier.weight(0.4f).fillMaxHeight())
+                        keypad(Modifier.weight(0.6f).fillMaxHeight())
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize().padding(horizontal = gutter).padding(bottom = 8.dp)) {
+                        summary(Modifier.weight(summaryWeight).fillMaxWidth())
+                        Spacer(Modifier.height(10.dp))
+                        keypad(Modifier.weight(1f - summaryWeight).fillMaxWidth())
+                    }
                 }
             }
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val scheme = MaterialTheme.colorScheme
+        if (maxWidth >= 900.dp) {
+            PermanentNavigationDrawer(drawerContent = {
+                PermanentDrawerSheet(Modifier.width(300.dp), drawerContainerColor = scheme.surfaceContainerLow) { drawer() }
+            }) { content(false) }
+        } else {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                drawerContent = {
+                    ModalDrawerSheet(Modifier.width(318.dp), drawerContainerColor = scheme.surfaceContainerLow,
+                        drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)) { drawer() }
+                },
+            ) { content(true) }
         }
     }
 
@@ -318,13 +363,13 @@ fun CounterScreen(
         }
     }
     if (showPatient) PatientDialog(vm, onDismiss = { showPatient = false })
-    if (showKeyboardHelp) KeyboardHelpDialog(items) { showKeyboardHelp = false }
+    if (showKeyboardHelp) KeyboardHelpDialog(vm.activeItems()) { showKeyboardHelp = false }
     if (showNewSample) {
         AlertDialog(
             onDismissRequest = { showNewSample = false },
             icon = { Icon(Icons.Filled.RestartAlt, null) },
             title = { Text("Start a new sample?") },
-            text = { Text("All counts in every mode, sample details and per-sample findings will be cleared. Settings, presets and custom counters are kept.") },
+            text = { Text("All counts in every counter, sample details and per-sample findings will be cleared. Settings, presets and custom keys are kept.") },
             confirmButton = {
                 Button(
                     onClick = { vm.newSample(); showNewSample = false; message("Ready for a new sample") },
@@ -352,27 +397,391 @@ fun CounterScreen(
     }
 }
 
-private fun setupLabel(m: CounterMode) = when (m) {
-    CounterMode.BLOOD -> "RBC · Platelets"
-    CounterMode.MARROW -> "Findings"
-    CounterMode.CUSTOM -> "Edit keys"
-    CounterMode.RBC_MORPH -> "Guide"
-    else -> "Setup"
+// ====================================================================== summary (top panel)
+@Composable
+private fun SummaryPanel(
+    vm: CounterViewModel,
+    onEditSample: () -> Unit,
+    onMoreSetup: () -> Unit,
+    onContinue: () -> Unit,
+    large: Boolean,
+    modifier: Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val mode = vm.mode
+    val counted = vm.currentTotal
+    val target = vm.currentTarget
+    val report = vm.modeReport()
+    val items = vm.allItemsFor(mode).let { all -> all.filter { it in vm.activeItems() || vm.countOf(it) > 0 } }
+    val chamberStage = mode == CounterMode.FLUID && (vm.fluidStage == 0 || !vm.fluidPreset.hasDifferential)
+    Surface(modifier = modifier, shape = RoundedCornerShape(26.dp), color = scheme.surfaceContainerLow, contentColor = scheme.onSurface) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = onEditSample, shape = RoundedCornerShape(14.dp), color = scheme.surfaceContainerHighest,
+                    contentColor = scheme.onSurface, modifier = Modifier.weight(1f).height(40.dp)) {
+                    Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Badge, null, Modifier.size(18.dp), tint = scheme.primary)
+                        Spacer(Modifier.width(8.dp))
+                        val id = listOf(vm.sampleId, vm.patientName).filter { it.isNotBlank() }.joinToString("  ·  ")
+                        Text(id.ifBlank { "Add sample details" }, style = MaterialTheme.typography.titleSmall,
+                            color = if (id.isBlank()) scheme.onSurfaceVariant else scheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (Layouts.supports(mode)) {
+                    Spacer(Modifier.width(8.dp))
+                    LayoutToggle(vm.isExtended(), { vm.setExtended(mode, it) }, Modifier.width(if (large) 200.dp else 164.dp))
+                }
+            }
+
+            if (mode == CounterMode.FLUID && vm.fluidPreset.hasDifferential) {
+                Spacer(Modifier.height(10.dp))
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(38.dp)) {
+                    listOf("1  Chamber count", "2  Differential").forEachIndexed { i, l ->
+                        SegmentedButton(
+                            selected = vm.fluidStage == i, onClick = { vm.fluidStage = i; vm.save() },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                            colors = SegmentedButtonDefaults.colors(
+                                activeContainerColor = scheme.primaryContainer, activeContentColor = scheme.onPrimaryContainer,
+                                inactiveContainerColor = scheme.surfaceContainerLow, inactiveContentColor = scheme.onSurface,
+                            ),
+                        ) { Text(l, style = MaterialTheme.typography.labelLarge) }
+                    }
+                }
+            }
+
+            if (!chamberStage) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(counted.toString(), style = CounterNumberStyle.copy(fontSize = if (large) 36.sp else 30.sp), color = scheme.onSurface)
+                    Spacer(Modifier.width(6.dp))
+                    Text((if (target == 0) "" else "/ $target ") + totalNoun(vm), style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 5.dp).weight(1f, fill = false),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.weight(1f))
+                    StatusPill(vm)
+                }
+                val progress by animateFloatAsState(if (target == 0) 0f else (counted.toFloat() / target).coerceIn(0f, 1f),
+                    spring(stiffness = 400f), label = "progress")
+                if (target != 0) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(6.dp).clip(CircleShape),
+                        color = if (vm.currentLocked) LocalClinicalColors.current.success else scheme.primary,
+                        trackColor = scheme.surfaceContainerHighest, strokeCap = StrokeCap.Round, drawStopIndicator = {},
+                    )
+                }
+            }
+            AnimatedVisibility(vm.currentLocked, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                val cc = LocalClinicalColors.current
+                Surface(color = cc.successContainer, contentColor = cc.onSuccessContainer, shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Lock, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp))
+                        Text("Target reached · keypad locked", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = onContinue) { Text("Continue", color = cc.onSuccessContainer) }
+                    }
+                }
+            }
+
+            if (report != null && report.indices.isNotEmpty() && mode != CounterMode.CUSTOM && !chamberStage) {
+                Spacer(Modifier.height(10.dp))
+                MetricStrip(report.indices.take(if (large) 3 else 2))
+            }
+            Spacer(Modifier.height(10.dp))
+
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (chamberStage) {
+                    FluidChamberPanel(vm, onMoreSetup)
+                } else BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val donut = minOf(maxHeight, maxWidth * 0.44f, 240.dp)
+                    if (maxHeight < 96.dp) {
+                        CompositionStrip(items, { vm.countOf(it) }, counted)
+                    } else Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        DonutChart(items, { vm.countOf(it) }, counted, Modifier.size(donut))
+                        Spacer(Modifier.width(16.dp))
+                        Legend(items, { vm.countOf(it) }, counted, mode == CounterMode.BLOOD, Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
+            }
+        }
+    }
 }
 
-fun keypadColumns(n: Int, wide: Boolean): Int = when {
-    n <= 2 -> 2
-    n == 4 -> 2
-    wide && n > 12 -> 6
-    wide && n > 9 -> 4
-    n > 12 -> 3
-    else -> 3
+// ====================================================================== CSF & fluid chamber panel
+private data class AreaPreset(val label: String, val squares: List<String>)
+
+private val AREA_PRESETS = listOf(
+    AreaPreset("All 9 large squares", (0..8).map { "L$it" }),
+    AreaPreset("4 corner squares", listOf("L0", "L2", "L6", "L8")),
+    AreaPreset("4 corners + centre", listOf("L0", "L2", "L4", "L6", "L8")),
+    AreaPreset("Centre square", listOf("L4")),
+    AreaPreset("5 small centre squares", listOf("S0", "S4", "S12", "S20", "S24")),
+)
+
+private val DILUTIONS = listOf("1", "2", "5", "10", "20", "100", "200")
+
+private fun dilutionLabel(d: String) = if (d == "1" || d.isBlank()) "Undiluted" else "1 in $d"
+
+@Composable
+private fun FluidChamberPanel(vm: CounterViewModel, onMoreSetup: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val clinical = LocalClinicalColors.current
+    val preset = vm.fluidPreset
+    val squares = vm.fluidSquares
+    val area = Neubauer.area(squares)
+    val dilution = vm.input("fl.dilution", preset.defaultDilution.toString())
+    val areaLabel = AREA_PRESETS.firstOrNull { it.squares.toSet() == squares.toSet() }?.label
+        ?: if (squares.isEmpty()) "Choose squares" else "${squares.size} squares (custom)"
+    val rep = vm.modeReport()
+
+    Column(Modifier.fillMaxSize()) {
+        // step 1 – choose: specimen, dilution, squares
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingChip("Specimen", preset.label, FluidPreset.entries.map { it.label }) { i -> vm.setFluidPreset(FluidPreset.entries[i]) }
+            SettingChip("Dilution", dilutionLabel(dilution), DILUTIONS.map { dilutionLabel(it) } + "Other…") { i ->
+                if (i < DILUTIONS.size) vm.setInput("fl.dilution", DILUTIONS[i]) else onMoreSetup()
+            }
+            SettingChip("Squares counted", areaLabel, AREA_PRESETS.map { it.label }) { i ->
+                vm.setInput("fl.squares", AREA_PRESETS[i].squares.joinToString(","))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        // step 2 – the chamber, step 3 – live result
+        Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            NeubauerGrid(
+                selected = squares,
+                smallSquareMode = preset.smallSquares || squares.any { it.startsWith("S") },
+                onToggle = { vm.toggleSquare(it) },
+                modifier = Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+                rep?.rows?.forEach { row ->
+                    val c = when (row.flag) {
+                        Flag.HIGH -> clinical.high; Flag.LOW -> clinical.low; Flag.PRESENT -> clinical.warning; Flag.NONE -> scheme.onSurface
+                    }
+                    Text(row.name, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1)
+                    Text(row.extra ?: "—", style = CounterNumberStyle.copy(fontSize = 22.sp), color = c, maxLines = 1)
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    "${squares.size} square${if (squares.size == 1) "" else "s"} · ${String.format(java.util.Locale.US, "%.2f", area * 0.1)} µL",
+                    style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
+                )
+                Text("Tap a square to add or remove it", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingChip(label: String, value: String, options: List<String>, onPick: (Int) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Surface(onClick = { open = true }, shape = RoundedCornerShape(14.dp), color = scheme.surfaceContainerHighest, contentColor = scheme.onSurface) {
+            Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
+                    Text(value, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                }
+                Icon(Icons.Filled.ArrowDropDown, null, tint = scheme.onSurfaceVariant)
+            }
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = scheme.surfaceContainerHigh) {
+            options.forEachIndexed { i, o ->
+                DropdownMenuItem(
+                    text = { Text(o) },
+                    onClick = { open = false; onPick(i) },
+                    trailingIcon = { if (o == value) Icon(Icons.Filled.Check, null, tint = scheme.primary) },
+                )
+            }
+        }
+    }
+}
+
+// ====================================================================== keypad
+/**
+ * Keys in titled sections (bone marrow by progeny) or one plain grid.
+ * Rows share the height; if the screen is too short the keypad scrolls instead of squeezing the keys.
+ */
+@Composable
+fun SectionedKeypad(
+    sections: List<KeypadSection>,
+    columns: Int,
+    minRow: Dp,
+    spacing: Dp,
+    sectionInfo: (KeypadSection) -> String?,
+    modifier: Modifier,
+    key: @Composable (CountItem, Modifier) -> Unit,
+) {
+    val items = sections.flatMap { it.items }
+    if (items.isEmpty()) {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text("No keys yet — open \"Edit keys\" to add custom counters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+    val titled = sections.any { it.title != null }
+    val headerH = 26.dp
+    BoxWithConstraints(modifier) {
+        val rows = sections.sumOf { (it.items.size + columns - 1) / columns }
+        val headers = if (titled) sections.size else 0
+        val needed = minRow * rows + spacing * (rows + headers - 1) + headerH * headers
+        val scroll = maxHeight < needed
+        val colMod = if (scroll) Modifier.fillMaxWidth().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize()
+        Column(colMod, verticalArrangement = Arrangement.spacedBy(spacing)) {
+            sections.forEach { sec ->
+                if (titled && sec.title != null) SectionHeader(sec, sectionInfo(sec), Modifier.fillMaxWidth().height(headerH))
+                sec.items.chunked(columns).forEach { row ->
+                    val rm = if (scroll) Modifier.fillMaxWidth().height(minRow) else Modifier.fillMaxWidth().weight(1f)
+                    Row(rm, horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                        row.forEach { item -> key(item, Modifier.weight(1f).fillMaxHeight()) }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(sec: KeypadSection, info: String?, modifier: Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val accent = if (LocalClinicalColors.current.isDark) lerp(sec.accent, Color.White, 0.3f) else sec.accent
+    Row(modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(width = 4.dp, height = 16.dp).clip(CircleShape).background(accent))
+        Spacer(Modifier.width(8.dp))
+        Text(sec.title.orEmpty(), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface, maxLines = 1)
+        sec.subtitle?.let {
+            Spacer(Modifier.width(6.dp))
+            Text(it, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        }
+        Spacer(Modifier.weight(1f))
+        info?.let {
+            Text(it, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"), color = accent, maxLines = 1)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CountKey(
+    item: CountItem,
+    count: Int,
+    sub: String,
+    correction: Boolean,
+    locked: Boolean,
+    large: Boolean,
+    flash: Boolean,
+    flashTick: Long,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    modifier: Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalClinicalColors.current.isDark
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "press")
+    val excluded = !item.countsInTotal
+    val container by animateColorAsState(
+        when { correction -> scheme.errorContainer; excluded -> scheme.surfaceContainer; else -> scheme.surfaceContainerHigh },
+        label = "container",
+    )
+    val content = if (correction) scheme.onErrorContainer else scheme.onSurface
+    val subContent = if (correction) scheme.onErrorContainer.copy(alpha = 0.8f) else scheme.onSurfaceVariant
+    val shape = RoundedCornerShape(20.dp)
+    val accent = item.uiAccent()
+
+    // Flash (undo / keyboard): two quick pulses of the key's colour
+    val flashAnim = remember { Animatable(0f) }
+    LaunchedEffect(flashTick, flash) {
+        if (flash && flashTick != 0L) {
+            flashAnim.snapTo(1f); flashAnim.animateTo(0f, tween(260))
+            flashAnim.animateTo(1f, tween(120)); flashAnim.animateTo(0f, tween(520))
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (locked) 0.55f else 1f }
+            .clip(shape)
+            .combinedClickable(
+                interactionSource = interaction, indication = ripple(color = accent),
+                onClickLabel = "Count one ${item.displayName}", onLongClickLabel = "Show reference card",
+                onLongClick = onLongPress, onClick = onTap,
+            ),
+        shape = shape, color = container, contentColor = content,
+        border = if (excluded && !correction) BorderStroke(1.dp, scheme.outlineVariant) else null,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val h = maxHeight
+            val w = maxWidth
+            val compact = h < 86.dp
+            val longest = item.displayName.split(" ").maxOf { it.length }.coerceAtLeast(1)
+            val badgeBg = accent.copy(alpha = if (dark) 0.22f else 0.13f)
+            if (compact) {
+                val illus = minOf(h * 0.62f, 36.dp)
+                val nameW = w.value - illus.value - 74f
+                val fit = (nameW / (longest * 0.56f)).coerceIn(9.5f, if (large) 14f else 12.5f)
+                Row(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(illus).clip(CircleShape).background(badgeBg), contentAlignment = Alignment.Center) {
+                        CellIllustration(item, Modifier.size(illus * 0.84f))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.displayName, style = MaterialTheme.typography.labelLarge.copy(fontSize = fit.sp, fontWeight = FontWeight.SemiBold),
+                        color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fit * 1.18f).sp, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(4.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        CountText(count, (h.value * 0.3f).coerceIn(17f, 24f), content)
+                        Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = subContent, maxLines = 1)
+                    }
+                }
+            } else {
+                val illus = minOf(h * 0.44f, w * 0.40f).coerceAtLeast(24.dp)
+                val fit = ((w.value - 26f) / (longest * 0.58f)).coerceIn(9.5f, if (large) 16f else 14f)
+                Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
+                        Box(Modifier.size(illus).clip(CircleShape).background(badgeBg), contentAlignment = Alignment.Center) {
+                            CellIllustration(item, Modifier.size(illus * 0.86f))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Column(horizontalAlignment = Alignment.End) {
+                            CountText(count, (h.value * 0.2f).coerceIn(18f, if (large) 40f else 30f), content)
+                            Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = subContent, maxLines = 1)
+                        }
+                    }
+                    Text(item.displayName, style = MaterialTheme.typography.labelLarge.copy(fontSize = fit.sp, fontWeight = FontWeight.SemiBold),
+                        color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fit * 1.2f).sp)
+                }
+            }
+            if (flashAnim.value > 0f) {
+                Box(Modifier.matchParentSize().background(accent.copy(alpha = 0.42f * flashAnim.value))
+                    .border(3.dp, accent.copy(alpha = flashAnim.value), shape))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CountText(count: Int, size: Float, color: Color) {
+    AnimatedContent(
+        targetState = count,
+        transitionSpec = {
+            if (targetState > initialState) (slideInVertically { it / 2 } + fadeIn()).togetherWith(slideOutVertically { -it / 2 } + fadeOut())
+            else (slideInVertically { -it / 2 } + fadeIn()).togetherWith(slideOutVertically { it / 2 } + fadeOut())
+        }, label = "count",
+    ) { n -> Text(n.toString(), style = CounterNumberStyle.copy(fontSize = size.sp), color = color, maxLines = 1) }
 }
 
 fun nextTarget(current: Int): Int =
     TARGET_OPTIONS.filter { it != 0 && it > current }.minOrNull() ?: 0
 
 /** Hardware keyboard. Numeric keypad mirrors a laboratory counter (7-8-9 = top row). */
+
 private fun handleHardwareKey(vm: CounterViewModel, e: KeyEvent): Boolean {
     val numpad = mapOf(
         KeyEvent.KEYCODE_NUMPAD_7 to 0, KeyEvent.KEYCODE_NUMPAD_8 to 1, KeyEvent.KEYCODE_NUMPAD_9 to 2,
@@ -398,8 +807,10 @@ private val LETTER_KEYS = listOf(
     KeyEvent.KEYCODE_A, KeyEvent.KEYCODE_S, KeyEvent.KEYCODE_D, KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_G,
     KeyEvent.KEYCODE_H, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_L,
 )
+
 private val KEY_LABELS = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
     "A", "S", "D", "F", "G", "H", "J", "K", "L")
+
 private val NUMPAD_LABELS = listOf("7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "Enter")
 
 @Composable
@@ -441,38 +852,7 @@ private fun KeyCap(t: String) {
 }
 
 // ====================================================================== mode chips
-@Composable
-private fun ModeChips(current: CounterMode, onSelect: (CounterMode) -> Unit) {
-    val scheme = MaterialTheme.colorScheme
-    val scroll = rememberScrollState()
-    // keep the selected mode visible
-    LaunchedEffect(current) {
-        val frac = current.ordinal.toFloat() / (CounterMode.entries.size - 1).coerceAtLeast(1)
-        scroll.animateScrollTo((scroll.maxValue * frac).toInt())
-    }
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 12.dp).padding(bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        CounterMode.entries.forEach { m ->
-            FilterChip(
-                selected = m == current,
-                onClick = { onSelect(m) },
-                label = { Text(m.short, maxLines = 1) },
-                leadingIcon = if (m == current) { { Icon(Icons.Filled.Check, null, Modifier.size(16.dp)) } } else null,
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = scheme.surfaceContainerLow,
-                    labelColor = scheme.onSurfaceVariant,
-                    selectedContainerColor = scheme.primaryContainer,
-                    selectedLabelColor = scheme.onPrimaryContainer,
-                    selectedLeadingIconColor = scheme.onPrimaryContainer,
-                ),
-            )
-        }
-    }
-}
 
-// ====================================================================== target selector
 @Composable
 private fun TargetSelector(target: Int, onSelect: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
@@ -503,138 +883,20 @@ private fun TargetSelector(target: Int, onSelect: (Int) -> Unit) {
 }
 
 // ====================================================================== summary (top panel)
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
-private fun SummaryPanel(
-    vm: CounterViewModel,
-    items: List<CountItem>,
-    donutMode: Boolean,
-    onToggleChart: () -> Unit,
-    onEditSample: () -> Unit,
-    onContinue: () -> Unit,
-    large: Boolean,
-    modifier: Modifier,
-) {
+private fun StatusPill(vm: CounterViewModel) {
     val scheme = MaterialTheme.colorScheme
-    val mode = vm.mode
-    val counted = vm.currentTotal
-    val target = vm.currentTarget
-    val report = vm.modeReport()
-    Surface(
-        modifier = modifier, shape = MaterialTheme.shapes.large, color = scheme.surfaceContainerLow, contentColor = scheme.onSurface,
-        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.6f)),
-    ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(onClick = onEditSample, shape = RoundedCornerShape(12.dp), color = scheme.surfaceContainerHighest,
-                    contentColor = scheme.onSurface, modifier = Modifier.weight(1f)) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Badge, null, Modifier.size(18.dp), tint = scheme.primary)
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Sample / Patient", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                            val id = listOf(vm.sampleId, vm.patientName).filter { it.isNotBlank() }.joinToString("  ·  ")
-                            Text(id.ifBlank { "Tap to add details" }, style = MaterialTheme.typography.titleSmall,
-                                color = if (id.isBlank()) scheme.onSurfaceVariant else scheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-                if (mode != CounterMode.FLUID) {
-                    Spacer(Modifier.width(6.dp))
-                    IconButton(onClick = onToggleChart) {
-                        Icon(if (donutMode) Icons.Filled.BarChart else Icons.Filled.DonutLarge,
-                            contentDescription = if (donutMode) "Show bar chart" else "Show donut chart", tint = scheme.onSurfaceVariant)
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-
-            if (mode == CounterMode.FLUID && vm.fluidPreset.hasDifferential) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().height(38.dp)) {
-                    listOf("Chamber count", "Differential").forEachIndexed { i, l ->
-                        SegmentedButton(
-                            selected = vm.fluidStage == i, onClick = { vm.fluidStage = i; vm.save() },
-                            shape = SegmentedButtonDefaults.itemShape(i, 2),
-                            colors = SegmentedButtonDefaults.colors(
-                                activeContainerColor = scheme.primaryContainer, activeContentColor = scheme.onPrimaryContainer,
-                                inactiveContainerColor = scheme.surfaceContainerLow, inactiveContentColor = scheme.onSurface,
-                            ),
-                        ) { Text(l, style = MaterialTheme.typography.labelLarge) }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(counted.toString(), style = CounterNumberStyle.copy(fontSize = if (large) 34.sp else 26.sp), color = scheme.onSurface)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    (if (target == 0) "" else "/ $target ") + totalNoun(vm),
-                    style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp).weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.weight(1f))
-                StatusPill(vm)
-            }
-            val progress by animateFloatAsState(if (target == 0) 0f else (counted.toFloat() / target).coerceIn(0f, 1f),
-                spring(stiffness = 400f), label = "progress")
-            if (target != 0) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp).height(6.dp).clip(CircleShape),
-                    color = if (vm.currentLocked) LocalClinicalColors.current.success else scheme.primary,
-                    trackColor = scheme.surfaceContainerHighest, strokeCap = StrokeCap.Round, drawStopIndicator = {},
-                )
-            }
-            AnimatedVisibility(vm.currentLocked, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                val cc = LocalClinicalColors.current
-                Surface(color = cc.successContainer, contentColor = cc.onSuccessContainer, shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Lock, null, Modifier.size(16.dp)); Spacer(Modifier.width(8.dp))
-                        Text("Target reached · keypad locked", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = onContinue) { Text("Continue", color = cc.onSuccessContainer) }
-                    }
-                }
-            }
-
-            // key result metrics for the non-blood modes
-            if (report != null && report.indices.isNotEmpty() && mode != CounterMode.CUSTOM) {
-                Spacer(Modifier.height(8.dp))
-                MetricStrip(report.indices.take(if (large) 3 else 2))
-            }
-            Spacer(Modifier.height(8.dp))
-
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (mode == CounterMode.FLUID) {
-                    FluidChamberPanel(vm)
-                } else if (donutMode) BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val donut = minOf(maxHeight, maxWidth * 0.46f, 260.dp)
-                    if (maxHeight < 84.dp) {
-                        CompositionStrip(items, { vm.countOf(it) }, counted)
-                    } else Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        DonutChart(items, { vm.countOf(it) }, counted, Modifier.size(donut))
-                        Spacer(Modifier.width(14.dp))
-                        Legend(items, { vm.countOf(it) }, counted, mode == CounterMode.BLOOD, Modifier.weight(1f).fillMaxHeight())
-                    }
-                } else {
-                    BarList(items, { vm.countOf(it) }, counted, Modifier.fillMaxSize())
-                }
-            }
-        }
+    val (label, bg, fg) = when {
+        vm.correctionMode -> Triple("Correction −1", scheme.errorContainer, scheme.onErrorContainer)
+        vm.currentLocked -> Triple("Complete", LocalClinicalColors.current.successContainer, LocalClinicalColors.current.onSuccessContainer)
+        vm.mode == CounterMode.BLOOD && vm.nrbcCount > 0 -> Triple("Nucleated red cells ${vm.nrbcCount}", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        else -> Triple("Counting", scheme.primaryContainer, scheme.onPrimaryContainer)
     }
-}
-
-private fun totalNoun(vm: CounterViewModel): String = when (vm.mode) {
-    CounterMode.BLOOD -> "leucocytes"
-    CounterMode.MARROW -> "nucleated cells"
-    CounterMode.FLUID -> if (vm.fluidStage == 1 && vm.fluidPreset.hasDifferential) "cells in differential" else "cells in chamber"
-    CounterMode.RETIC -> if (vm.input("rt.miller") == "1") "cells (Miller disc)" else "red cells"
-    CounterMode.RBC_MORPH -> "red cells"
-    CounterMode.PLATELET -> "platelets"
-    CounterMode.VIABILITY -> "cells"
-    CounterMode.CUSTOM -> "cells"
+    Surface(color = bg, contentColor = fg, shape = CircleShape) {
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp).widthIn(max = 170.dp), overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable
@@ -657,61 +919,6 @@ private fun MetricStrip(indices: List<com.hematcount.app.model.ReportIndex>) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun FluidChamberPanel(vm: CounterViewModel) {
-    val scheme = MaterialTheme.colorScheme
-    val preset = vm.fluidPreset
-    if (vm.fluidStage == 1 && preset.hasDifferential) {
-        val items = vm.activeItems()
-        val total = vm.currentTotal
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val donut = minOf(maxHeight, maxWidth * 0.46f, 220.dp)
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                DonutChart(items, { vm.countOf(it) }, total, Modifier.size(donut))
-                Spacer(Modifier.width(14.dp))
-                Legend(items, { vm.countOf(it) }, total, false, Modifier.weight(1f).fillMaxHeight())
-            }
-        }
-        return
-    }
-    val squares = vm.fluidSquares
-    val area = Neubauer.area(squares)
-    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-        NeubauerGrid(
-            selected = squares, smallSquareMode = preset.smallSquares, onToggle = { vm.toggleSquare(it) },
-            gridColor = scheme.onSurface.copy(alpha = 0.75f), fineColor = scheme.onSurfaceVariant.copy(alpha = 0.5f),
-            selectedColor = scheme.primary, background = scheme.surfaceContainerHighest,
-            modifier = Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true).padding(2.dp),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
-            Text(preset.specimen, style = MaterialTheme.typography.titleSmall, color = scheme.onSurface)
-            Text("Dilution ${vm.input("fl.dilution", preset.defaultDilution.toString()).let { if (it == "1") "undiluted" else "1 in $it" }}",
-                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            Text("${squares.size} square(s) · ${fmt1(area)} mm² · ${String.format(java.util.Locale.US, "%.2f", area * 0.1)} µL",
-                style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            Spacer(Modifier.height(6.dp))
-            Text(if (preset.smallSquares) "Tap the small central squares you counted." else "Tap the large squares you counted.",
-                style = MaterialTheme.typography.labelSmall, color = scheme.primary)
-        }
-    }
-}
-
-@Composable
-private fun StatusPill(vm: CounterViewModel) {
-    val scheme = MaterialTheme.colorScheme
-    val (label, bg, fg) = when {
-        vm.correctionMode -> Triple("Correction −1", scheme.errorContainer, scheme.onErrorContainer)
-        vm.currentLocked -> Triple("Complete", LocalClinicalColors.current.successContainer, LocalClinicalColors.current.onSuccessContainer)
-        vm.mode == CounterMode.BLOOD && vm.nrbcCount > 0 -> Triple("Nucleated red cells ${vm.nrbcCount}", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        else -> Triple("Counting", scheme.primaryContainer, scheme.onPrimaryContainer)
-    }
-    Surface(color = bg, contentColor = fg, shape = CircleShape) {
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp).widthIn(max = 170.dp), overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -755,6 +962,7 @@ private fun DonutChart(items: List<CountItem>, countOf: (CountItem) -> Int, tota
 }
 
 /** One stacked bar plus the leading cell types — used when the panel is too short for a donut. */
+
 @Composable
 private fun CompositionStrip(items: List<CountItem>, countOf: (CountItem) -> Int, total: Int) {
     val scheme = MaterialTheme.colorScheme
@@ -810,169 +1018,37 @@ private fun Legend(items: List<CountItem>, countOf: (CountItem) -> Int, total: I
 }
 
 @Composable
-private fun BarList(items: List<CountItem>, countOf: (CountItem) -> Int, total: Int, modifier: Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        items.filter { it.countsInTotal }.forEach { item ->
-            val c = countOf(item)
-            val f = if (total == 0) 0f else c.toFloat() / total
-            val anim by animateFloatAsState(f, tween(300), label = "bar")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(item.displayName, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface,
-                    modifier = Modifier.weight(0.42f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Box(Modifier.weight(0.43f).height(10.dp).clip(CircleShape).background(scheme.surfaceContainerHighest)) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(anim).clip(CircleShape).background(item.uiAccent()))
-                }
-                Text("${fmt1(f * 100.0)}%", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-                    color = scheme.onSurface, modifier = Modifier.weight(0.15f).padding(start = 6.dp), maxLines = 1)
-            }
-        }
-    }
+fun CountItem.uiAccent(): Color =
+    if (LocalClinicalColors.current.isDark) lerp(accent, Color.White, 0.22f) else accent
+
+fun keypadColumns(n: Int, wide: Boolean): Int = when {
+    n <= 2 -> 2
+    n == 4 -> 2
+    wide && n > 12 -> 6
+    wide && n > 9 -> 4
+    n > 12 -> 3
+    else -> 3
 }
 
-// ====================================================================== keypad
-@Composable
-fun CountKeypad(
-    items: List<CountItem>,
-    columns: Int,
-    countOf: (CountItem) -> Int,
-    total: Int,
-    subOverride: (CountItem) -> String? = { null },
-    nrbcStyle: Boolean,
-    correction: Boolean,
-    locked: Boolean,
-    large: Boolean,
-    flashId: String?,
-    flashTick: Long,
-    onTap: (CountItem) -> Unit,
-    onLongPress: (CountItem) -> Unit,
-    modifier: Modifier,
-) {
-    val spacing = if (large) 12.dp else 8.dp
-    if (items.isEmpty()) {
-        Box(modifier, contentAlignment = Alignment.Center) {
-            Text("No keys yet — tap \"Edit keys\" to add custom counters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        return
-    }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(spacing)) {
-        items.chunked(columns).forEach { row ->
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spacing)) {
-                row.forEach { item ->
-                    CountKey(
-                        item = item, count = countOf(item), total = total, subOverride = subOverride(item), nrbcStyle = nrbcStyle,
-                        correction = correction, locked = locked, large = large,
-                        flash = flashId == item.id, flashTick = flashTick,
-                        onTap = { onTap(item) }, onLongPress = { onLongPress(item) },
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                }
-                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-            }
-        }
-    }
+private fun setupLabel(m: CounterMode) = when (m) {
+    CounterMode.BLOOD -> "RBC · Platelets"
+    CounterMode.MARROW -> "Findings"
+    CounterMode.CUSTOM -> "Edit keys"
+    CounterMode.RBC_MORPH -> "Guide"
+    else -> "Setup"
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RowScope.CountKey(
-    item: CountItem,
-    count: Int,
-    total: Int,
-    subOverride: String?,
-    nrbcStyle: Boolean,
-    correction: Boolean,
-    locked: Boolean,
-    large: Boolean,
-    flash: Boolean,
-    flashTick: Long,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-    modifier: Modifier,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "press")
-    val excluded = !item.countsInTotal
-    val container by animateColorAsState(
-        when { correction -> scheme.errorContainer; excluded -> scheme.surfaceContainer; else -> scheme.surfaceContainerHigh },
-        label = "container",
-    )
-    val content = if (correction) scheme.onErrorContainer else scheme.onSurface
-    val subContent = if (correction) scheme.onErrorContainer.copy(alpha = 0.8f) else scheme.onSurfaceVariant
-    val shape = MaterialTheme.shapes.medium
-    val accent = item.uiAccent()
-
-    // Flash (undo / keyboard): two quick pulses of the key's accent colour
-    val flashAnim = remember { Animatable(0f) }
-    LaunchedEffect(flashTick, flash) {
-        if (flash && flashTick != 0L) {
-            flashAnim.snapTo(1f); flashAnim.animateTo(0f, tween(260))
-            flashAnim.animateTo(1f, tween(120)); flashAnim.animateTo(0f, tween(520))
-        }
-    }
-
-    Surface(
-        modifier = modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale; alpha = if (locked) 0.55f else 1f }
-            .clip(shape)
-            .combinedClickable(
-                interactionSource = interaction, indication = ripple(color = accent),
-                onClickLabel = "Count one ${item.displayName}", onLongClickLabel = "Show reference card",
-                onLongClick = onLongPress, onClick = onTap,
-            ),
-        shape = shape, color = container, contentColor = content,
-        border = BorderStroke(1.dp, if (correction) scheme.error.copy(alpha = 0.6f) else scheme.outlineVariant.copy(alpha = if (excluded) 0.9f else 0.5f)),
-    ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val h = maxHeight
-            val w = maxWidth
-            val illus: Dp = minOf(h * 0.46f, w * 0.40f).coerceAtLeast(22.dp)
-            val countSize = (h.value * 0.19f).coerceIn(16f, if (large) 40f else 30f)
-            val compact = w < 112.dp || h < 92.dp
-            Box(Modifier.align(Alignment.CenterStart).padding(vertical = 14.dp).width(4.dp).fillMaxHeight()
-                .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp)).background(accent))
-            Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 10.dp, top = 6.dp, bottom = 6.dp)) {
-                Row(Modifier.weight(1f).fillMaxWidth()) {
-                    CellIllustration(item, Modifier.size(illus))
-                    Spacer(Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
-                        AnimatedContent(
-                            targetState = count,
-                            transitionSpec = {
-                                if (targetState > initialState) (slideInVertically { it / 2 } + fadeIn()).togetherWith(slideOutVertically { -it / 2 } + fadeOut())
-                                else (slideInVertically { -it / 2 } + fadeIn()).togetherWith(slideOutVertically { it / 2 } + fadeOut())
-                            }, label = "count",
-                        ) { n -> Text(n.toString(), style = CounterNumberStyle.copy(fontSize = countSize.sp), color = content, maxLines = 1) }
-                        val sub = when {
-                            correction -> "tap −1"
-                            subOverride != null -> subOverride
-                            excluded && nrbcStyle -> if (total > 0) "${fmt1(count * 100.0 / total)}/100" else "0/100"
-                            excluded -> "separate"
-                            else -> if (total > 0) "${fmt1(count * 100.0 / total)}%" else "0.0%"
-                        }
-                        Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = subContent, maxLines = 1)
-                    }
-                }
-                val baseSize = if (compact) 12.5f else if (large) 16f else 14f
-                val longest = item.displayName.split(" ").maxOf { it.length }.coerceAtLeast(1)
-                val fitSize = ((w.value - 22f) / (longest * 0.58f)).coerceAtMost(baseSize).coerceAtLeast(9.5f)
-                Text(item.displayName,
-                    style = MaterialTheme.typography.labelLarge.copy(fontSize = fitSize.sp, fontWeight = FontWeight.SemiBold),
-                    color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fitSize * 1.2f).sp)
-                if (h > 118.dp) Text(item.group, style = MaterialTheme.typography.bodySmall, color = subContent, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            // flash overlay
-            if (flashAnim.value > 0f) {
-                Box(Modifier.matchParentSize().background(accent.copy(alpha = 0.42f * flashAnim.value))
-                    .border(3.dp, accent.copy(alpha = flashAnim.value), shape))
-            }
-        }
-    }
+private fun totalNoun(vm: CounterViewModel): String = when (vm.mode) {
+    CounterMode.BLOOD -> "leucocytes"
+    CounterMode.MARROW -> "nucleated cells"
+    CounterMode.FLUID -> if (vm.fluidStage == 1 && vm.fluidPreset.hasDifferential) "cells in differential" else "cells in chamber"
+    CounterMode.RETIC -> if (vm.input("rt.miller") == "1") "cells (Miller disc)" else "red cells"
+    CounterMode.RBC_MORPH -> "red cells"
+    CounterMode.PLATELET -> "platelets"
+    CounterMode.VIABILITY -> "cells"
+    CounterMode.CUSTOM -> "cells"
 }
 
-// ====================================================================== action bar
 @Composable
 private fun ActionBar(
     canUndo: Boolean,
@@ -985,8 +1061,8 @@ private fun ActionBar(
     onResults: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    Surface(color = scheme.surfaceContainerHigh, contentColor = scheme.onSurface, shape = RoundedCornerShape(28.dp),
-        tonalElevation = 2.dp, shadowElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = scheme.surfaceContainerLow, contentColor = scheme.onSurface, shape = RoundedCornerShape(30.dp),
+        modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(6.dp).heightIn(min = 60.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ActionItem(Icons.AutoMirrored.Filled.Undo, "Undo", enabled = canUndo, onClick = onUndo)
             ActionItem(Icons.Outlined.RemoveCircleOutline, if (correction) "Correcting" else "Correct −1",

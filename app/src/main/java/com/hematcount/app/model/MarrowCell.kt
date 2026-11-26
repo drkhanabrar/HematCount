@@ -2,7 +2,7 @@ package com.hematcount.app.model
 
 import androidx.compose.ui.graphics.Color
 
-enum class Lineage { MYELOID, ERYTHROID, LYMPHOID, OTHER }
+enum class Lineage { MYELOID, ERYTHROID, LYMPHOID, MEGAKARYOCYTIC, OTHER }
 
 /**
  * Bone marrow aspirate differential (myelogram).
@@ -111,7 +111,7 @@ enum class MarrowCell(
             increasedIn = "Marrow infiltration by lymphoma or metastatic carcinoma, neuroblastoma, rhabdomyosarcoma.",
             decreasedIn = "Not present in normal marrow.",
         )),
-    MEGAKARYOCYTE("Megakaryocytes", "Tallied separately", "MEGAKARYOCYTE", Color(0xFF8B5CF6), Lineage.OTHER, false, null, null,
+    MEGAKARYOCYTE("Megakaryocytes", "Tallied separately", "MEGAKARYOCYTE", Color(0xFF8B5CF6), Lineage.MEGAKARYOCYTIC, false, null, null,
         MorphologyReference(
             size = "50 – 100 µm (largest marrow cell)",
             nucleus = "Single large multilobed nucleus; micromegakaryocytes and separated lobes are dysplastic.",
@@ -120,6 +120,39 @@ enum class MarrowCell(
             increasedIn = "Immune thrombocytopenia, essential thrombocythaemia and other myeloproliferative neoplasms, reactive thrombocytosis.",
             decreasedIn = "Aplastic anaemia, marrow infiltration, chemotherapy. Normally several per low-power field; assessed and reported separately.",
         )),
+
+    // ---- extended keypad only: platelet lineage detail (tallied separately)
+    DYSPLASTIC_MEGAKARYOCYTE("Dysplastic Megakaryocytes", "Tallied separately", "MEGAKARYOCYTE", Color(0xFFC026D3), Lineage.MEGAKARYOCYTIC, false, null, null,
+        MorphologyReference(
+            size = "Micromegakaryocytes ≤ size of a promyelocyte; others variable",
+            nucleus = "Micromegakaryocytes with one or two small round lobes; widely separated (\"pawn-ball\") lobes; hypolobated forms.",
+            cytoplasm = "Often mature granular cytoplasm despite small size.",
+            staining = "Romanowsky; confirm with CD61 / CD42b in trephine.",
+            increasedIn = "Myelodysplastic neoplasms (≥ 10% dysplastic megakaryocytes is significant, WHO 5th ed.), MDS with isolated del(5q) (hypolobated forms), myeloproliferative neoplasms.",
+            decreasedIn = "Assess at least 30 megakaryocytes; report as a proportion of megakaryocytes counted.",
+        )),
+
+    // ---- simple keypad only: merged stages
+    EARLY_NORMOBLAST("Early Normoblasts", "Proerythroblasts + basophilic", "BASO_NORMO", Color(0xFFBE185D), Lineage.ERYTHROID, true, 0.7, 3.7,
+        MorphologyReference(
+            size = "12 – 25 µm",
+            nucleus = "Round nucleus with fine to slightly coarse chromatin; nucleoli in proerythroblasts.",
+            cytoplasm = "Deeply basophilic, no haemoglobin pinkness.",
+            staining = "Romanowsky. Simple keypad combines proerythroblasts and basophilic normoblasts.",
+            increasedIn = "Erythroid hyperplasia, megaloblastic anaemia, pure erythroid leukaemia, parvovirus B19 (giant proerythroblasts).",
+            decreasedIn = "Pure red cell aplasia, aplastic anaemia. Range = sum of the component stages (approximate).",
+        )),
+    LATE_NORMOBLAST("Late Normoblasts", "Polychromatic + orthochromatic", "POLY_NORMO", Color(0xFFE11D48), Lineage.ERYTHROID, true, 18.3, 33.8,
+        MorphologyReference(
+            size = "7 – 12 µm",
+            nucleus = "Small, round, coarse \"checkerboard\" to pyknotic chromatin.",
+            cytoplasm = "Grey-lilac (polychromatic) to pink (orthochromatic).",
+            staining = "Romanowsky. Simple keypad combines polychromatic and orthochromatic normoblasts.",
+            increasedIn = "Erythroid hyperplasia: haemolysis, haemorrhage, thalassaemia, ineffective erythropoiesis.",
+            decreasedIn = "Red cell aplasia, anaemia of renal failure. Range = sum of the component stages (approximate).",
+        )),
+    NEUTROPHILS_ALL("Bands & Neutrophils", "Band + segmented forms", "NEUTROPHIL", Color(0xFF2563EB), Lineage.MYELOID, true, 15.5, 27.3,
+        CellType.NEUTROPHIL.reference),
     ;
 
     override val id: String get() = "BM_$name"
@@ -131,6 +164,42 @@ enum class MarrowCell(
 
     companion object {
         val keypadOrder: List<MarrowCell> = entries.toList()
+
+        /** Keypad sections grouped by progeny. */
+        val ERYTHROID_TITLE = "Erythroid series"
+        val LEUCOCYTE_TITLE = "Leucocyte series"
+        val PLATELET_TITLE = "Megakaryocytic series"
+        val OTHER_TITLE = "Other cells"
+
+        fun sections(extended: Boolean): List<KeypadSection> = if (extended) listOf(
+            KeypadSection(ERYTHROID_TITLE, "Red cell precursors", Color(0xFFE11D48),
+                listOf(PROERYTHROBLAST, BASOPHILIC_NORMOBLAST, POLYCHROMATIC_NORMOBLAST, ORTHOCHROMATIC_NORMOBLAST)),
+            KeypadSection(LEUCOCYTE_TITLE, "White cell precursors", Color(0xFF2563EB),
+                listOf(BLAST, PROMYELOCYTE, MYELOCYTE, METAMYELOCYTE, BAND, SEGMENTED, EOSINOPHIL, BASOPHIL, MONOCYTE, LYMPHOCYTE, PLASMA_CELL)),
+            KeypadSection(PLATELET_TITLE, "Platelet precursors", Color(0xFF8B5CF6),
+                listOf(MEGAKARYOCYTE, DYSPLASTIC_MEGAKARYOCYTE)),
+            KeypadSection(OTHER_TITLE, null, Color(0xFF64748B), listOf(MACROPHAGE, OTHER)),
+        ) else listOf(
+            KeypadSection(ERYTHROID_TITLE, "Red cell precursors", Color(0xFFE11D48), listOf(EARLY_NORMOBLAST, LATE_NORMOBLAST)),
+            KeypadSection(LEUCOCYTE_TITLE, "White cell precursors", Color(0xFF2563EB),
+                listOf(BLAST, PROMYELOCYTE, MYELOCYTE, METAMYELOCYTE, NEUTROPHILS_ALL, EOSINOPHIL, MONOCYTE, LYMPHOCYTE, PLASMA_CELL)),
+            KeypadSection(PLATELET_TITLE, "Platelet precursors", Color(0xFF8B5CF6), listOf(MEGAKARYOCYTE)),
+            KeypadSection(OTHER_TITLE, null, Color(0xFF64748B), listOf(OTHER)),
+        )
+
+        fun sectionOf(c: MarrowCell): String = when (c.lineage) {
+            Lineage.ERYTHROID -> ERYTHROID_TITLE
+            Lineage.MEGAKARYOCYTIC -> PLATELET_TITLE
+            Lineage.OTHER -> if (c == MONOCYTE) LEUCOCYTE_TITLE else OTHER_TITLE
+            else -> LEUCOCYTE_TITLE
+        }
+
+        /** Report order: by progeny, extended order first, merged entries next to their stages. */
+        val reportOrder: List<MarrowCell> = listOf(
+            PROERYTHROBLAST, BASOPHILIC_NORMOBLAST, EARLY_NORMOBLAST, POLYCHROMATIC_NORMOBLAST, ORTHOCHROMATIC_NORMOBLAST, LATE_NORMOBLAST,
+            BLAST, PROMYELOCYTE, MYELOCYTE, METAMYELOCYTE, BAND, SEGMENTED, NEUTROPHILS_ALL, EOSINOPHIL, BASOPHIL, MONOCYTE, LYMPHOCYTE, PLASMA_CELL,
+            MEGAKARYOCYTE, DYSPLASTIC_MEGAKARYOCYTE, MACROPHAGE, OTHER,
+        )
         val countedTypes: List<MarrowCell> = entries.filter { it.countsInTotal }
         /** Normal adult M:E ratio range. */
         const val ME_LOW = 1.5

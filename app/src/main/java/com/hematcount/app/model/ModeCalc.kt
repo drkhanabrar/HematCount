@@ -17,6 +17,8 @@ data class ReportRow(
     val accent: Color,
     /** Rows that are tallied separately (not part of the % total). */
     val separate: Boolean = false,
+    /** Group heading the row belongs to (bone marrow: by progeny). */
+    val section: String? = null,
 )
 
 data class ReportIndex(
@@ -64,9 +66,12 @@ object ModeCalc {
     // =================================================================== bone marrow
     fun marrow(counts: Map<String, Int>, inputs: Map<String, String>, target: Int): ModeReport {
         val total = MarrowCell.countedTypes.sumOf { counts[it.id] ?: 0 }
-        val rows = MarrowCell.keypadOrder.map { c ->
+        val onKeypad = MarrowCell.sections(Layouts.isExtended(CounterMode.MARROW, inputs)).flatMap { it.items }
+        val shown = Layouts.visible(MarrowCell.reportOrder, onKeypad) { counts[it.id] ?: 0 }
+        val rows = shown.map { c ->
             val n = counts[c.id] ?: 0
-            if (!c.countsInTotal) ReportRow(c.displayName, n, null, null, c.normalText, Flag.NONE, c.accent, separate = true)
+            val section = MarrowCell.sectionOf(c)
+            if (!c.countsInTotal) ReportRow(c.displayName, n, null, null, c.normalText, Flag.NONE, c.accent, separate = true, section = section)
             else {
                 val p = pct(n, total)
                 val flag = when {
@@ -74,7 +79,7 @@ object ModeCalc {
                     c.low == null && c.high == 0.0 -> if (n > 0) Flag.PRESENT else Flag.NONE
                     else -> flagRange(p, c.low, c.high)
                 }
-                ReportRow(c.displayName, n, p, null, c.normalText, flag, c.accent)
+                ReportRow(c.displayName, n, p, null, c.normalText, flag, c.accent, section = section)
             }
         }
         fun sumOf(l: Lineage) = MarrowCell.countedTypes.filter { it.lineage == l }.sumOf { counts[it.id] ?: 0 }
@@ -95,6 +100,11 @@ object ModeCalc {
             ReportIndex("Plasma cells", "${fmt1(plasma)} %", "Normal 0.4 – 3.9 %", if (plasma > 3.9) Flag.HIGH else Flag.NONE),
             ReportIndex("Megakaryocytes tallied", "${counts[MarrowCell.MEGAKARYOCYTE.id] ?: 0}"),
         )
+        val megaN = counts[MarrowCell.MEGAKARYOCYTE.id] ?: 0
+        val dysN = counts[MarrowCell.DYSPLASTIC_MEGAKARYOCYTE.id] ?: 0
+        val dysPct = if (megaN + dysN > 0) dysN * 100.0 / (megaN + dysN) else null
+        if (dysN > 0 && dysPct != null) indices += ReportIndex("Dysplastic megakaryocytes", "${fmt1(dysPct)} %",
+            "of ${megaN + dysN} megakaryocytes · significant ≥ 10 %", if (dysPct >= 10) Flag.HIGH else Flag.NONE)
         val setup = listOf(
             "Aspirate site" to (inputs["bm.site"].orEmpty().ifBlank { "—" }),
             "Particles" to label(inputs["bm.particles"], Particles.entries.associate { it.name to it.label }),
@@ -112,6 +122,8 @@ object ModeCalc {
             if ((counts[MarrowCell.OTHER.id] ?: 0) > 0) alerts += "Abnormal / other cells recorded — describe their morphology in the remarks."
             if (total < 300) alerts += "Only $total nucleated cells counted — ICSH recommends a 500-cell marrow differential."
         }
+        if (dysPct != null && dysPct >= 10) alerts += "Dysplastic megakaryocytes ${fmt1(dysPct)}% (≥ 10%)" +
+            (if (megaN + dysN < 30) " — assess at least 30 megakaryocytes." else " — significant megakaryocytic dysplasia; consider myelodysplastic neoplasm.")
         return ModeReport(
             mode = CounterMode.MARROW, title = CounterMode.MARROW.reportTitle, specimen = "Bone marrow aspirate smear",
             totalLabel = "Nucleated cells counted", total = total, target = target,
@@ -164,8 +176,9 @@ object ModeCalc {
             bloodWbc != null && bloodRbc != null && bloodRbc > 0)
             (nucleated - rbc * (bloodWbc * 1000) / (bloodRbc * 1_000_000)).coerceAtLeast(0.0) else null
 
-        val diffItems = if (preset.hasDifferential) FluidItems.differentialItems(preset) else emptyList()
-        val diffTotal = diffItems.sumOf { diff[it.id] ?: 0 }
+        val allDiff = if (preset.hasDifferential) FluidItems.differentialItems(preset) else emptyList()
+        val diffTotal = allDiff.sumOf { diff[it.id] ?: 0 }
+        val diffItems = Layouts.visible(allDiff, Layouts.fluidDiff(preset, Layouts.isExtended(CounterMode.FLUID, inputs))) { diff[it.id] ?: 0 }
         val nucForAbs = correctedNuc ?: nucleated
         val rows2 = diffItems.map { item ->
             val n = diff[item.id] ?: 0
@@ -280,9 +293,10 @@ object ModeCalc {
     }
 
     // =================================================================== red cell abnormalities
-    fun rbcMorph(counts: Map<String, Int>, target: Int): ModeReport {
+    fun rbcMorph(counts: Map<String, Int>, target: Int, inputs: Map<String, String> = emptyMap()): ModeReport {
         val total = RbcItems.items.sumOf { counts[it.id] ?: 0 }
-        val rows = RbcItems.items.map { it ->
+        val shownRbc = Layouts.visible(RbcItems.items, Layouts.rbcItems(Layouts.isExtended(CounterMode.RBC_MORPH, inputs))) { counts[it.id] ?: 0 }
+        val rows = shownRbc.map { it ->
             val n = counts[it.id] ?: 0
             val p = pct(n, total)
             val flag = when {
@@ -331,7 +345,10 @@ object ModeCalc {
             ReportRow("Oil-immersion fields", fields, null, null, "≥ 10 fields", Flag.NONE, PlateletItems.FIELD.accent, separate = true),
             ReportRow("Platelet clumps", clumps, null, null, "None", if (clumps > 0) Flag.PRESENT else Flag.NONE, PlateletItems.CLUMP.accent, separate = true),
             ReportRow("Giant platelets", giant, null, null, "Occasional", Flag.NONE, PlateletItems.GIANT.accent, separate = true),
-        )
+        ).filter { r ->
+            Layouts.isExtended(CounterMode.PLATELET, inputs) || r.count > 0 ||
+                (r.name != "Platelet clumps" && r.name != "Giant platelets")
+        }
         val indices = listOf(
             ReportIndex("Estimated platelet count", estimate?.let { "${fmtInt(it)} ×10³/µL" } ?: "Count at least one field",
                 "Normal 150 – 410 ×10³/µL", estimate?.let { flagRange(it, 150.0, 410.0) } ?: Flag.NONE, emphasise = true),

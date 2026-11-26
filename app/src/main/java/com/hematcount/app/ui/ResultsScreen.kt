@@ -294,7 +294,7 @@ private fun ReportTab(vm: CounterViewModel, snackbar: SnackbarHostState) {
                     Text("%", style = st, color = c, modifier = Modifier.weight(0.6f))
                     Text("×10³/µL", style = st, color = c, modifier = Modifier.weight(0.8f))
                 }
-                results.rows.forEachIndexed { i, row ->
+                results.shown.forEachIndexed { i, row ->
                     val flagColor = when (row.flag) { Flag.HIGH -> clinical.high; Flag.LOW -> clinical.low; Flag.PRESENT -> clinical.warning; Flag.NONE -> scheme.onSurface }
                     Row(
                         Modifier.fillMaxWidth()
@@ -754,6 +754,10 @@ private fun RowsCard(title: String, rows: List<com.hematcount.app.model.ReportRo
             if (extraHeader.isNotBlank()) Text(extraHeader, style = st, color = c, modifier = Modifier.weight(1f))
         }
         rows.forEachIndexed { i, row ->
+            if (row.section != null && row.section != rows.getOrNull(i - 1)?.section) {
+                Text(row.section, style = MaterialTheme.typography.labelLarge, color = scheme.primary,
+                    modifier = Modifier.padding(start = 10.dp, top = if (i == 0) 8.dp else 14.dp, bottom = 4.dp))
+            }
             val flagColor = when (row.flag) { Flag.HIGH -> clinical.high; Flag.LOW -> clinical.low; Flag.PRESENT -> clinical.warning; Flag.NONE -> scheme.onSurface }
             Row(
                 Modifier.fillMaxWidth().background(if (i % 2 == 1) scheme.surfaceContainerHigh.copy(alpha = 0.6f) else Color.Transparent)

@@ -94,7 +94,7 @@ fun AboutScreen(onBack: () -> Unit) {
                     ) {
                         Box(
                             Modifier.fillMaxWidth()
-                                .background(Brush.linearGradient(listOf(Color(0xFF0B3954), Color(0xFF0E7490))))
+                                .background(BrandGradient)
                                 .padding(24.dp),
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
@@ -102,9 +102,7 @@ fun AboutScreen(onBack: () -> Unit) {
                                     Modifier.size(84.dp).clip(CircleShape).background(Color(0x33FFFFFF)),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Box(Modifier.size(66.dp).clip(CircleShape).background(Color(0xFFF4F7FB)), contentAlignment = Alignment.Center) {
-                                        CellIllustration(CellType.NEUTROPHIL, Modifier.size(54.dp))
-                                    }
+                                    AppIconBadge(76.dp)
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 Text("HematCount", style = MaterialTheme.typography.headlineMedium, color = Color.White)

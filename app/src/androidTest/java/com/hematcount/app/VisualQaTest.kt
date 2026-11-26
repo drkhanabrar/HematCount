@@ -100,6 +100,9 @@ class VisualQaTest {
         compose.onAllNodes(hasContentDescription(d) and hasClickAction()).onFirst().performClick()
     }.onFailure { android.util.Log.w("VisualQa", "click desc '$d' failed: ${it.message}") } }
 
+    /** Opens the counters side panel (phones); on wide tablets the panel is always visible. */
+    private fun openDrawer() { clickDesc("Open counters panel"); Thread.sleep(500) }
+
     private fun back() {
         runCatching { Espresso.pressBackUnconditionally() }
             .onFailure { runCatching { instr.uiAutomation.executeShellCommand("input keyevent 4").close() } }
@@ -126,9 +129,12 @@ class VisualQaTest {
             shot("${tag}_03_correction_mode")
             clickText("Correcting")
 
-            clickDesc("Show bar chart")
-            shot("${tag}_04_bar_chart")
-            clickDesc("Show donut chart")
+            clickText("Simple")
+            shot("${tag}_04_simple_keypad")
+            clickText("Extended")
+            openDrawer()
+            shot("${tag}_04b_drawer")
+            back()
 
             runCatching {
                 compose.onAllNodes(hasText("Monocytes") and hasClickAction()).onFirst()
@@ -141,7 +147,7 @@ class VisualQaTest {
             shot("${tag}_06_morphology_sheet")
             back()
 
-            clickText("Sample / Patient")
+            clickText("HC-2410-0187  ·  Rahul Deshmukh")
             shot("${tag}_07_patient_dialog")
             back()
 
@@ -154,16 +160,16 @@ class VisualQaTest {
             scrollTo(2); shot("${tag}_12_ai_result")
             clickDesc("Back to counter")
 
-            clickDesc("More"); clickText("Settings")
+            openDrawer(); clickText("Settings")
             shot("${tag}_13_settings")
             scrollTo(3); shot("${tag}_14_settings_ai")
             back()
 
-            clickDesc("More"); clickText("History & backup")
+            openDrawer(); clickText("History & backup")
             shot("${tag}_15_history")
             back()
 
-            clickDesc("More"); clickText("About")
+            openDrawer(); clickText("About")
             shot("${tag}_16_about")
             back()
 
@@ -177,15 +183,16 @@ class VisualQaTest {
 
             // ---- every additional counter mode
             val modes = listOf(
-                Triple("Bone marrow", "marrow", "Findings"), Triple("CSF · Fluids", "fluid", "Setup"),
-                Triple("Reticulocytes", "retic", "Setup"), Triple("RBC morphology", "rbc", "Guide"),
-                Triple("Platelets", "platelet", "Setup"), Triple("Viability", "viability", "Setup"),
-                Triple("Custom", "custom", "Edit keys"),
+                Triple("Bone marrow differential", "marrow", "Findings"), Triple("CSF & body fluid (Neubauer)", "fluid", "Setup"),
+                Triple("Reticulocyte count", "retic", "Setup"), Triple("Red cell abnormality count", "rbc", "Guide"),
+                Triple("Platelet estimate (smear)", "platelet", "Setup"), Triple("Cell viability (trypan blue)", "viability", "Setup"),
+                Triple("Custom counter", "custom", "Edit keys"),
             )
             for ((chip, name, setup) in modes) {
-                clickText(chip)
+                openDrawer(); clickText(chip)
                 shot("${tag}_m_${name}_1_counter")
-                if (name == "fluid") { clickText("Differential"); shot("${tag}_m_${name}_1b_differential"); clickText("Chamber count") }
+                if (name == "fluid") { clickText("2  Differential"); shot("${tag}_m_${name}_1b_differential"); clickText("1  Chamber count") }
+                if (name == "marrow") { clickText("Simple"); shot("${tag}_m_marrow_1a_simple"); clickText("Extended") }
                 if (name == "marrow") {
                     clickText("Blasts")
                     clickText("Undo")
@@ -211,7 +218,7 @@ class VisualQaTest {
                     }
                 }
             }
-            clickText("Blood")
+            openDrawer(); clickText("Peripheral blood differential")
         }
     }
 

@@ -270,7 +270,7 @@ object PdfReport {
         centered("FLAG", null, xFlag, x7)
         s.y = hTop + hH
 
-        r.rows.forEachIndexed { i, row ->
+        r.shown.forEachIndexed { i, row ->
             val top = s.y
             if (i % 2 == 1) c.drawRect(x0, top, x7, top + rowH, fill(ZEBRA))
             val base = top + 11.2f
@@ -364,6 +364,13 @@ object PdfReport {
         var separatorDrawn = false
         rows.forEachIndexed { i, r ->
             if (s.y + rowH > CONTENT_BOTTOM) { finishPage(s); newPage(s, first = false) }
+            if (r.section != null && r.section != rows.getOrNull(i - 1)?.section) {
+                if (s.y + rowH * 2 > CONTENT_BOTTOM) { finishPage(s); newPage(s, first = false) }
+                val hc = s.canvas
+                hc.drawRect(x0, s.y, x7, s.y + 15f, fill(Color.rgb(230, 242, 246)))
+                hc.drawText(r.section.uppercase(), x0 + 10f, s.y + 10.6f, text(7.2f, TEAL, BOLD).apply { letterSpacing = 0.08f })
+                s.y += 15f
+            }
             val cc = s.canvas
             if (r.separate && !separatorDrawn) { cc.drawLine(x0, s.y, x7, s.y, stroke(NAVY, 0.8f)); separatorDrawn = true }
             val top = s.y
