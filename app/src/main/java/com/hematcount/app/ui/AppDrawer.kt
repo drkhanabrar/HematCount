@@ -79,8 +79,8 @@ fun CounterMode.title(): String = when (this) {
 /** Short description shown under each counter in the side panel. */
 fun CounterMode.blurb(): String = when (this) {
     CounterMode.BLOOD -> "Leucocyte differential"
-    CounterMode.MARROW -> "Myelogram by progeny · M:E ratio"
-    CounterMode.FLUID -> "Neubauer chamber · cells/µL"
+    CounterMode.MARROW -> "Myelogram by progeny"
+    CounterMode.FLUID -> "Neubauer chamber"
     CounterMode.RETIC -> "Supravital stain · RPI"
     CounterMode.RBC_MORPH -> "Poikilocytes · schistocytes"
     CounterMode.PLATELET -> "Per oil-immersion field"
@@ -158,7 +158,7 @@ fun AppDrawerContent(
             NavigationDrawerItem(
                 label = {
                     Column {
-                        Text(m.title(), style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        Text(m.title(), style = MaterialTheme.typography.titleSmall, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(m.blurb(), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = if (selected) scheme.onSecondaryContainer.copy(alpha = 0.75f) else scheme.onSurfaceVariant)

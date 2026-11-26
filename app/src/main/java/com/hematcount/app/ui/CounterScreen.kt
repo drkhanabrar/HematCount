@@ -548,12 +548,14 @@ private fun FluidChamberPanel(vm: CounterViewModel, onMoreSetup: () -> Unit) {
         }
         Spacer(Modifier.height(10.dp))
         // step 2 – the chamber, step 3 – live result
-        Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        val diagram = minOf(maxHeight, maxWidth * 0.58f)
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             NeubauerGrid(
                 selected = squares,
                 smallSquareMode = preset.smallSquares || squares.any { it.startsWith("S") },
                 onToggle = { vm.toggleSquare(it) },
-                modifier = Modifier.fillMaxHeight().aspectRatio(1f, matchHeightConstraintsFirst = true),
+                modifier = Modifier.size(diagram),
             )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
@@ -571,6 +573,7 @@ private fun FluidChamberPanel(vm: CounterViewModel, onMoreSetup: () -> Unit) {
                 )
                 Text("Tap a square to add or remove it", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
             }
+        }
         }
     }
 }
