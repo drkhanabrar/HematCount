@@ -222,7 +222,7 @@ fun CounterScreen(
                     },
                     title = {
                         Column {
-                            Text(mode.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(mode.title(), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 if (Layouts.supports(mode)) (if (vm.isExtended()) "Extended keypad" else "Simple keypad") else mode.blurb(),
                                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -285,7 +285,7 @@ fun CounterScreen(
                             }
                         }
                         SectionedKeypad(
-                            sections = sections, columns = cols, minRow = if (tablet) 88.dp else 66.dp,
+                            sections = sections, columns = cols, minRow = if (tablet) 92.dp else 78.dp,
                             spacing = if (tablet) 10.dp else 8.dp, sectionInfo = sectionInfo,
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         ) { item, mod ->
@@ -633,7 +633,7 @@ fun SectionedKeypad(
         val colMod = if (scroll) Modifier.fillMaxWidth().verticalScroll(rememberScrollState()) else Modifier.fillMaxSize()
         Column(colMod, verticalArrangement = Arrangement.spacedBy(spacing)) {
             sections.forEach { sec ->
-                if (titled && sec.title != null) SectionHeader(sec, sectionInfo(sec), Modifier.fillMaxWidth().height(headerH))
+                if (titled && sec.title != null) SectionHeader(sec, sectionInfo(sec), maxWidth >= 560.dp, Modifier.fillMaxWidth().height(headerH))
                 sec.items.chunked(columns).forEach { row ->
                     val rm = if (scroll) Modifier.fillMaxWidth().height(minRow) else Modifier.fillMaxWidth().weight(1f)
                     Row(rm, horizontalArrangement = Arrangement.spacedBy(spacing)) {
@@ -647,14 +647,14 @@ fun SectionedKeypad(
 }
 
 @Composable
-private fun SectionHeader(sec: KeypadSection, info: String?, modifier: Modifier) {
+private fun SectionHeader(sec: KeypadSection, info: String?, showSubtitle: Boolean, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
     val accent = if (LocalClinicalColors.current.isDark) lerp(sec.accent, Color.White, 0.3f) else sec.accent
     Row(modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 4.dp, height = 16.dp).clip(CircleShape).background(accent))
         Spacer(Modifier.width(8.dp))
         Text(sec.title.orEmpty(), style = MaterialTheme.typography.labelLarge, color = scheme.onSurface, maxLines = 1)
-        sec.subtitle?.let {
+        sec.subtitle?.takeIf { showSubtitle }?.let {
             Spacer(Modifier.width(6.dp))
             Text(it, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -724,21 +724,22 @@ private fun CountKey(
             val longest = item.displayName.split(" ").maxOf { it.length }.coerceAtLeast(1)
             val badgeBg = accent.copy(alpha = if (dark) 0.22f else 0.13f)
             if (compact) {
-                val illus = minOf(h * 0.62f, 36.dp)
-                val nameW = w.value - illus.value - 74f
-                val fit = (nameW / (longest * 0.56f)).coerceIn(9.5f, if (large) 14f else 12.5f)
-                Row(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(illus).clip(CircleShape).background(badgeBg), contentAlignment = Alignment.Center) {
-                        CellIllustration(item, Modifier.size(illus * 0.84f))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.displayName, style = MaterialTheme.typography.labelLarge.copy(fontSize = fit.sp, fontWeight = FontWeight.SemiBold),
-                        color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fit * 1.18f).sp, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(4.dp))
-                    Column(horizontalAlignment = Alignment.End) {
-                        CountText(count, (h.value * 0.3f).coerceIn(17f, 24f), content)
+                // small keys: [cell · %  count] on top, full-width name below
+                val illus = minOf(h * 0.4f, 30.dp)
+                val fit = ((w.value - 20f) / (longest * 0.57f)).coerceIn(9.5f, if (large) 14f else 12.5f)
+                Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(illus).clip(CircleShape).background(badgeBg), contentAlignment = Alignment.Center) {
+                            CellIllustration(item, Modifier.size(illus * 0.86f))
+                        }
+                        Spacer(Modifier.weight(1f))
                         Text(sub, style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = subContent, maxLines = 1)
+                        Spacer(Modifier.width(6.dp))
+                        CountText(count, (h.value * 0.27f).coerceIn(16f, 22f), content)
                     }
+                    Spacer(Modifier.weight(1f))
+                    Text(item.displayName, style = MaterialTheme.typography.labelLarge.copy(fontSize = fit.sp, fontWeight = FontWeight.SemiBold),
+                        color = content, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = (fit * 1.15f).sp)
                 }
             } else {
                 val illus = minOf(h * 0.44f, w * 0.40f).coerceAtLeast(24.dp)
@@ -888,14 +889,13 @@ private fun TargetSelector(target: Int, onSelect: (Int) -> Unit) {
 private fun StatusPill(vm: CounterViewModel) {
     val scheme = MaterialTheme.colorScheme
     val (label, bg, fg) = when {
-        vm.correctionMode -> Triple("Correction −1", scheme.errorContainer, scheme.onErrorContainer)
+        vm.correctionMode -> Triple("Correcting −1", scheme.errorContainer, scheme.onErrorContainer)
         vm.currentLocked -> Triple("Complete", LocalClinicalColors.current.successContainer, LocalClinicalColors.current.onSuccessContainer)
-        vm.mode == CounterMode.BLOOD && vm.nrbcCount > 0 -> Triple("Nucleated red cells ${vm.nrbcCount}", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        else -> Triple("Counting", scheme.primaryContainer, scheme.onPrimaryContainer)
+        else -> return
     }
     Surface(color = bg, contentColor = fg, shape = CircleShape) {
         Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp).widthIn(max = 170.dp), overflow = TextOverflow.Ellipsis)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
     }
 }
 

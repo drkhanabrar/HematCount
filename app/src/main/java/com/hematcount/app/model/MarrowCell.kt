@@ -166,9 +166,9 @@ enum class MarrowCell(
         val keypadOrder: List<MarrowCell> = entries.toList()
 
         /** Keypad sections grouped by progeny. */
-        val ERYTHROID_TITLE = "Erythroid series"
-        val LEUCOCYTE_TITLE = "Leucocyte series"
-        val PLATELET_TITLE = "Megakaryocytic series"
+        val ERYTHROID_TITLE = "Erythroid series (RBC)"
+        val LEUCOCYTE_TITLE = "Leucocyte series (WBC)"
+        val PLATELET_TITLE = "Megakaryocytic series (Platelets)"
         val OTHER_TITLE = "Other cells"
 
         fun sections(extended: Boolean): List<KeypadSection> = if (extended) listOf(

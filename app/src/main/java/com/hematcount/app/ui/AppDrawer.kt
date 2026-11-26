@@ -64,6 +64,18 @@ fun CounterMode.iconCell(): String = when (this) {
     CounterMode.CUSTOM -> "OTHER"
 }
 
+/** Short name for the title bar and the side panel. */
+fun CounterMode.title(): String = when (this) {
+    CounterMode.BLOOD -> "Blood differential"
+    CounterMode.MARROW -> "Bone marrow"
+    CounterMode.FLUID -> "CSF & body fluids"
+    CounterMode.RETIC -> "Reticulocytes"
+    CounterMode.RBC_MORPH -> "Red cell morphology"
+    CounterMode.PLATELET -> "Platelet estimate"
+    CounterMode.VIABILITY -> "Cell viability"
+    CounterMode.CUSTOM -> "Custom counter"
+}
+
 /** Short description shown under each counter in the side panel. */
 fun CounterMode.blurb(): String = when (this) {
     CounterMode.BLOOD -> "Leucocyte differential"
@@ -146,7 +158,7 @@ fun AppDrawerContent(
             NavigationDrawerItem(
                 label = {
                     Column {
-                        Text(m.label, style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        Text(m.title(), style = MaterialTheme.typography.bodyLarge, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(m.blurb(), style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             color = if (selected) scheme.onSecondaryContainer.copy(alpha = 0.75f) else scheme.onSurfaceVariant)
@@ -168,7 +180,7 @@ fun AppDrawerContent(
         }
 
         if (Layouts.supports(vm.mode)) {
-            DrawerLabel("Keypad for ${vm.mode.short.lowercase()}")
+            DrawerLabel("Keypad · ${vm.mode.title()}")
             LayoutToggle(vm.isExtended(), { vm.setExtended(vm.mode, it) }, Modifier.fillMaxWidth().padding(horizontal = 8.dp))
             Text(
                 if (vm.isExtended()) "All cell types, stage by stage." else "Essential cell types only — quicker counting.",

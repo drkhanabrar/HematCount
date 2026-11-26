@@ -96,12 +96,12 @@ class VisualQaTest {
         n.performClick()
     }.onFailure { android.util.Log.w("VisualQa", "click '$t' failed: ${it.message}") } }
 
-    private fun clickDesc(d: String) { runCatching {
+    private fun clickDesc(d: String): Boolean = runCatching {
         compose.onAllNodes(hasContentDescription(d) and hasClickAction()).onFirst().performClick()
-    }.onFailure { android.util.Log.w("VisualQa", "click desc '$d' failed: ${it.message}") } }
+    }.onFailure { android.util.Log.w("VisualQa", "click desc '$d' failed: ${it.message}") }.isSuccess
 
     /** Opens the counters side panel (phones); on wide tablets the panel is always visible. */
-    private fun openDrawer() { clickDesc("Open counters panel"); Thread.sleep(500) }
+    private fun openDrawer(): Boolean { val ok = clickDesc("Open counters panel"); Thread.sleep(500); return ok }
 
     private fun back() {
         runCatching { Espresso.pressBackUnconditionally() }
@@ -132,9 +132,9 @@ class VisualQaTest {
             clickText("Simple")
             shot("${tag}_04_simple_keypad")
             clickText("Extended")
-            openDrawer()
+            val opened = openDrawer()
             shot("${tag}_04b_drawer")
-            back()
+            if (opened) back()
 
             runCatching {
                 compose.onAllNodes(hasText("Monocytes") and hasClickAction()).onFirst()
@@ -183,9 +183,9 @@ class VisualQaTest {
 
             // ---- every additional counter mode
             val modes = listOf(
-                Triple("Bone marrow differential", "marrow", "Findings"), Triple("CSF & body fluid (Neubauer)", "fluid", "Setup"),
-                Triple("Reticulocyte count", "retic", "Setup"), Triple("Red cell abnormality count", "rbc", "Guide"),
-                Triple("Platelet estimate (smear)", "platelet", "Setup"), Triple("Cell viability (trypan blue)", "viability", "Setup"),
+                Triple("Bone marrow", "marrow", "Findings"), Triple("CSF & body fluids", "fluid", "Setup"),
+                Triple("Reticulocytes", "retic", "Setup"), Triple("Red cell morphology", "rbc", "Guide"),
+                Triple("Platelet estimate", "platelet", "Setup"), Triple("Cell viability", "viability", "Setup"),
                 Triple("Custom counter", "custom", "Edit keys"),
             )
             for ((chip, name, setup) in modes) {
@@ -218,7 +218,7 @@ class VisualQaTest {
                     }
                 }
             }
-            openDrawer(); clickText("Peripheral blood differential")
+            openDrawer(); clickText("Blood differential")
         }
     }
 
