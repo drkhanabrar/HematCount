@@ -6,6 +6,19 @@ Status: ✅ done · 🔄 in progress · 📝 planned / suggested
 
 ---
 
+## Requested by Dr. Imran Khan (27 Nov 2026) — on `dev`, not yet released
+
+| # | Item | Status |
+|---|---|---|
+| R7 | **Side sliding panel** for the counters instead of the top chips (always visible on wide tablets) | ✅ (dev) |
+| R8 | **Simple / Extended keypads** for blood, bone marrow, fluid differential, red cell morphology and platelets — counts are never lost when switching | ✅ (dev) |
+| R9 | **Bone marrow keys grouped by progeny**: Erythroid series (RBC), Leucocyte series (WBC), Megakaryocytic series (Platelets), Other cells — with live lineage totals; same grouping in the results table and PDF | ✅ (dev) |
+| R10 | **Simpler Neubauer counting**: specimen, dilution and squares chosen from three drop-downs on the counter screen; redrawn chamber (W leucocyte squares, R red-cell squares, true 4×4 / 4×5 / 5×5 ruling); live cells/µL beside the chamber | ✅ (dev) |
+| R11 | **Cleaner look**: shorter titles, borderless keys with tinted cell badges, quieter status pill, simpler action bar | ✅ (dev) |
+| R12 | **New app icon** (counting ring around a neutrophil, teal → indigo) | ✅ (dev) |
+
+Simple keypads: blood — neutrophils, lymphocytes, monocytes, eosinophils, basophils, nucleated red cells; marrow — early / late normoblasts, bands & neutrophils combined (ranges = sum of stages, approximate); fluid — neutrophils, lymphocytes, monocytes & macrophages, atypical cells; red cells — normal, schistocytes, spherocytes, target, tear-drop, other; platelets — platelets and fields. Extended marrow adds dysplastic megakaryocytes (WHO ≥ 10% flag).
+
 ## Requested by Dr. Imran Khan (28 Oct 2026)
 
 | # | Item | Status |
