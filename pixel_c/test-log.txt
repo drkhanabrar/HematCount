@@ -1,5 +1,6 @@
 onError: commandError=true message=INSTRUMENTATION_FAILED: com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner
 android.util.AndroidException: INSTRUMENTATION_FAILED: com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner
+INSTRUMENTATION_STATUS: Error=Unable to find instrumentation info for: ComponentInfo{com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner}
 	at com.android.commands.am.Instrument.run(Instrument.java:535)
 	at com.android.commands.am.Am.runInstrument(Am.java:208)
 	at com.android.commands.am.Am.onRun(Am.java:85)
@@ -7,6 +8,5 @@ android.util.AndroidException: INSTRUMENTATION_FAILED: com.hematcount.app.debug.
 	at com.android.commands.am.Am.main(Am.java:54)
 	at com.android.internal.os.RuntimeInit.nativeFinishInit(Native Method)
 	at com.android.internal.os.RuntimeInit.main(RuntimeInit.java:359)
-INSTRUMENTATION_STATUS: Error=Unable to find instrumentation info for: ComponentInfo{com.hematcount.app.debug.test/androidx.test.runner.AndroidJUnitRunner}
 INSTRUMENTATION_STATUS: id=ActivityManagerService
 INSTRUMENTATION_STATUS_CODE: -1
